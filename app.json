@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "ChoreBuddy",
+    "slug": "chorebuddy",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "icon": "./assets/images/app-icon.png",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#FBF7FD"
+    },
+    "android": {
+      "package": "chores.tracker.chorebuddy",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FBF7FD"
+      },
+      "permissions": ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM"]
+    },
+    "plugins": [
+      "@react-native-firebase/app",
+      "expo-font",
+      "expo-notifications",
+      ["expo-build-properties", {"android": {"minSdkVersion": 26}}]
+    ]
+  }
+}

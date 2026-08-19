@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "131458540102",
+    "project_id": "chorebuddy-a4be2",
+    "storage_bucket": "chorebuddy-a4be2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:131458540102:android:447cb3351444080938a047",
+        "android_client_info": {
+          "package_name": "chores.tracker.chorebuddy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "131458540102-g56h4ushpgsvjt38egsja0f7h97skkns.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2Ghts4egiFxJLtrisyM73p_Kzmje3NHY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "131458540102-g56h4ushpgsvjt38egsja0f7h97skkns.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "131458540102-dnonu7aoccl9fud0qp48ehtnp63gleb5.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.chorebuddy.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,2 @@
+export type RootStackParamList = { Main: undefined; Settings: undefined; Members: undefined; MemberDetail: { memberId: string }; AddChore: { zone?: string } | undefined; ZoneDetail: { zone: string }; ChoreDetail: { choreId: string }; ChoreStatus: { choreId: string; day?: string }; CreateZone: { zoneId?: string } | undefined; Overview: { name: string; choreId: string } };
+export type MainTabsParamList = { Home: undefined; Zone: undefined; Chart: undefined; Stats: undefined };
