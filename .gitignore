@@ -3,6 +3,7 @@ node_modules/
 android/
 *.jks
 *.keystore
+credentials/
 local.properties
 npm-debug.log*
 .DS_Store

@@ -41,5 +41,5 @@ Open verification:
 
 - Device-run Google Sign-In requires the Android SHA fingerprints to be registered in Firebase if they are not already.
 - Full visual parity requires emulator screenshots on small phone and tablet.
-- Play products/base plans must exist in Play Console before purchase paths can be verified.
-- Paywall/Gift product IDs are intentionally deferred until supplied; their designs remain in place.
+- Google Play Billing is now wired for weekly, yearly (`yearly-offer`), and yearly-gift subscriptions, including localized prices, acknowledgement, entitlement restore, paywall purchase actions, and Home/Settings gift banners.
+- Final billing verification requires installing an internal/closed-test build from Google Play with a licensed tester account.

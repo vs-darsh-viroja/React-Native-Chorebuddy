@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "131458540102-2gqam8ngrj8ethfppam7pm5t1u5s9743.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "chores.tracker.chorebuddy",
+            "certificate_hash": "d2bfe1e2a031f3b4d6547e801a4334b89b88ed0a"
+          }
+        },
+        {
           "client_id": "131458540102-g56h4ushpgsvjt38egsja0f7h97skkns.apps.googleusercontent.com",
           "client_type": 3
         }

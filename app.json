@@ -14,18 +14,34 @@
     },
     "android": {
       "package": "chores.tracker.chorebuddy",
+      "versionCode": 1,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FBF7FD"
       },
-      "permissions": ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM"]
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
     "plugins": [
       "@react-native-firebase/app",
       "expo-font",
       "expo-notifications",
-      ["expo-build-properties", {"android": {"minSdkVersion": 26}}]
-    ]
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "74467cdc-e59f-4f92-9268-b6b6b632ce9e"
+      }
+    }
   }
 }
