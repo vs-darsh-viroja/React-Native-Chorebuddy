@@ -3,6 +3,7 @@ import { Animated, StyleSheet, View } from 'react-native';
 import { Images } from '@/constants/assets';
 import { isBigPad, isSmallPhone, s } from '@/theme';
 import { FadeOutMask, TopGlow, spring, useFloat } from './parts';
+import { AnimatedAppImage } from '@/components/AppImage';
 
 const TASK_SLIDE = 55;
 const TASKS = [
@@ -18,8 +19,10 @@ export function OnboardingCalendarView({ isActive }: { isActive: boolean }) {
   const tasks = useRef(TASKS.map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
-    if (!isActive) return;
+    // Reset before the early return so an INACTIVE page never holds stale
+    // state to flash on its way back in (Rethrive's pager rule).
     tasks.forEach(value => value.setValue(0));
+    if (!isActive) return;
     const timers = tasks.map((value, index) => setTimeout(() => spring(value, 1, 0.55, 0.82).start(), 250 + index * 140));
     return () => timers.forEach(clearTimeout);
   }, [isActive, tasks]);
@@ -31,7 +34,7 @@ export function OnboardingCalendarView({ isActive }: { isActive: boolean }) {
         {/* Task cards sit behind the calendar and fade out toward the bottom. */}
         <View style={styles.tasksLayer}>
           {TASKS.map((task, index) => (
-            <Animated.Image
+            <AnimatedAppImage
               key={index}
               source={task.source}
               resizeMode="stretch"
@@ -50,10 +53,10 @@ export function OnboardingCalendarView({ isActive }: { isActive: boolean }) {
         </View>
 
         {/* The bunny face slides down behind the calendar to produce the peek. */}
-        <Animated.Image source={Images.bunnyFaceImg} resizeMode="stretch" style={[styles.bunnyFace, { transform: [{ translateY: bunnyDip }] }]} />
-        <Animated.Image source={Images.calendarImg} resizeMode="stretch" style={styles.calendar} />
-        <Animated.Image source={Images.bunnyRightHandImg} resizeMode="stretch" style={styles.rightHand} />
-        <Animated.Image source={Images.bunnyLeftHandImg} resizeMode="stretch" style={styles.leftHand} />
+        <AnimatedAppImage source={Images.bunnyFaceImg} resizeMode="stretch" style={[styles.bunnyFace, { transform: [{ translateY: bunnyDip }] }]} />
+        <AnimatedAppImage source={Images.calendarImg} resizeMode="stretch" style={styles.calendar} />
+        <AnimatedAppImage source={Images.bunnyRightHandImg} resizeMode="stretch" style={styles.rightHand} />
+        <AnimatedAppImage source={Images.bunnyLeftHandImg} resizeMode="stretch" style={styles.leftHand} />
       </View>
     </View>
   );

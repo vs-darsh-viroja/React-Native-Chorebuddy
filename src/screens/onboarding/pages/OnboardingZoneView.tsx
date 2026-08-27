@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Images } from '@/constants/assets';
 import { colors, font, isBigPad, isSmallPhone, s } from '@/theme';
 import { TopGlow, shadow, useFloat } from './parts';
+import { AnimatedAppImage, AppImage } from '@/components/AppImage';
 
 const FULL_NAME = 'Living Room';
 const ICON_COUNT = 18;
@@ -32,10 +33,12 @@ export function OnboardingZoneView({ isActive }: { isActive: boolean }) {
   const [iconIndex, setIconIndex] = useState(0);
 
   useEffect(() => {
-    if (!isActive) return;
+    // Reset before the early return so an INACTIVE page never holds stale
+    // state to flash on its way back in (Rethrive's pager rule).
     setTypedName('');
     setColorIndex(0);
     setIconIndex(0);
+    if (!isActive) return;
     const typers = Array.from({ length: FULL_NAME.length }, (_, i) => setTimeout(() => setTypedName(FULL_NAME.slice(0, i + 1)), (i + 1) * 130));
     const cycle = setInterval(() => {
       setColorIndex(current => (current + 1) % PALETTE.length);
@@ -55,7 +58,7 @@ export function OnboardingZoneView({ isActive }: { isActive: boolean }) {
           <View style={styles.field}><Text style={styles.fieldText}>{typedName}</Text></View>
           <Text style={styles.iconLabel}>Icon</Text>
           <LinearGradient colors={[swatch.top, swatch.bottom]} style={[styles.headerTile, { borderColor: swatch.border }]}>
-            <Image source={ZONE_ICONS[iconIndex]} resizeMode="contain" style={styles.headerTileIcon} tintColor={colors.white} />
+            <AppImage source={ZONE_ICONS[iconIndex]} resizeMode="contain" style={styles.headerTileIcon} tintColor={colors.white} />
           </LinearGradient>
         </View>
 
@@ -64,8 +67,8 @@ export function OnboardingZoneView({ isActive }: { isActive: boolean }) {
           <View style={styles.swatchRow}>
             {PALETTE.map((entry, index) => (
               <View key={index} style={styles.swatchCell}>
-                <Image source={entry.asset} resizeMode="contain" style={styles.swatch} />
-                <Image source={Images.checkIcon2} resizeMode="contain" style={[styles.swatchCheck, { opacity: colorIndex === index ? 1 : 0 }]} />
+                <AppImage source={entry.asset} resizeMode="contain" style={styles.swatch} />
+                <AppImage source={Images.checkIcon2} resizeMode="contain" style={[styles.swatchCheck, { opacity: colorIndex === index ? 1 : 0 }]} />
               </View>
             ))}
           </View>
@@ -81,8 +84,8 @@ export function OnboardingZoneView({ isActive }: { isActive: boolean }) {
                   const selected = iconIndex === index;
                   return (
                     <View key={col} style={[styles.iconCell, selected && styles.iconCellSelected]}>
-                      <Image source={ZONE_ICONS[index]} resizeMode="contain" style={styles.iconCellIcon} />
-                      <Image source={Images.checkIcon3} resizeMode="contain" style={[styles.iconCellCheck, { opacity: selected ? 1 : 0 }]} />
+                      <AppImage source={ZONE_ICONS[index]} resizeMode="contain" style={styles.iconCellIcon} />
+                      <AppImage source={Images.checkIcon3} resizeMode="contain" style={[styles.iconCellCheck, { opacity: selected ? 1 : 0 }]} />
                     </View>
                   );
                 })}
@@ -91,7 +94,7 @@ export function OnboardingZoneView({ isActive }: { isActive: boolean }) {
           </View>
         </View>
 
-        <Animated.Image source={Images.bunnyImg2} resizeMode="stretch" style={[styles.bunny, { transform: [{ translateY: bunnyFloat }] }]} />
+        <AnimatedAppImage source={Images.bunnyImg2} resizeMode="stretch" style={[styles.bunny, { transform: [{ translateY: bunnyFloat }] }]} />
       </View>
     </View>
   );

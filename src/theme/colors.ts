@@ -10,3 +10,7 @@ export const colors = {
   blue: '#3F81FF',
   pink: '#FB4786',
 } as const;
+
+/** iOS `Color("card1")`…`card10"` — the per-member accent ring/tint used by the Chart and download sheets. */
+export const cardColors = ['#9871E8', '#FD9A02', '#5E9BFF', '#00B0AC', '#FF63B0', '#C547FF', '#06B6D4', '#6366F1', '#FFB20B', '#A16207'] as const;
+export const cardColor = (index: number) => cardColors[((index % cardColors.length) + cardColors.length) % cardColors.length];

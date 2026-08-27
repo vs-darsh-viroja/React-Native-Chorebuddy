@@ -1,37 +1,59 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Reanimated, { Easing as ReEasing, useAnimatedProps, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Images } from '@/constants/assets';
 import { colors, font, isPad, isSmallPhone, s } from '@/theme';
 import { shadow, spring, useFloat } from './parts';
+import { AnimatedAppImage, AppImage } from '@/components/AppImage';
 
 const RING_SWEEP = 0.391;
 const RING_RADIUS = 48.5;
 const RING_PAD = 4.5; // the 9pt stroke straddles the inscribed path, so the SVG canvas has to be wider
 const CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+/**
+ * The ring is the ONE animation in onboarding that cannot use RN's native driver:
+ * `strokeDashoffset` is SVG geometry, and the native driver only handles transform
+ * and opacity. Under Fabric that meant a full shadow-tree commit on every frame
+ * for a whole second, which is why this page stuttered while the others — all
+ * native-driven — did not.
+ *
+ * Reanimated animates it on the UI thread instead, keeping iOS's `Circle().trim`
+ * exactly. It needs no extra setup here: `babel-preset-expo` adds
+ * `react-native-worklets/plugin` automatically when Reanimated is installed, and
+ * the native libs already ship in the build.
+ */
+const ReanimatedCircle = Reanimated.createAnimatedComponent(Circle);
+const RING_FULL_LENGTH = s(CIRCUMFERENCE);
+const RING_SWEEP_LENGTH = s(CIRCUMFERENCE * RING_SWEEP);
 
 /** iOS `OnboardingProgressView` — page 1, "Keep Your Home Organized". */
 export function OnboardingProgressView({ isActive }: { isActive: boolean }) {
   const bunnyFloat = useFloat(-8, 1.8);
   const tasks = useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
-  const ring = useRef(new Animated.Value(0)).current;
+  const ring = useSharedValue(0);
 
   useEffect(() => {
-    if (!isActive) return;
+    // Reset before the early return so an INACTIVE page never holds stale
+    // state to flash on its way back in (Rethrive's pager rule). Assigning a
+    // plain number also cancels any in-flight ring animation.
     tasks.forEach(value => value.setValue(0));
-    ring.setValue(0);
+    ring.value = 0;
+    if (!isActive) return;
     const timers = tasks.map((value, index) => setTimeout(() => spring(value, 1, 0.55, 0.8).start(), 250 + index * 180));
-    const ringTimer = setTimeout(() => Animated.timing(ring, { toValue: 1, duration: 1000, useNativeDriver: false }).start(), 350);
-    return () => { timers.forEach(clearTimeout); clearTimeout(ringTimer); };
+    // The 350ms lead-in is now a UI-thread delay, so it no longer depends on a
+    // JS timer firing on schedule.
+    ring.value = withDelay(350, withTiming(1, { duration: 1000, easing: ReEasing.inOut(ReEasing.ease) }));
+    return () => { timers.forEach(clearTimeout); };
   }, [isActive, tasks, ring]);
 
   return (
     <View style={styles.root}>
       <View style={styles.headRow}>
         <ProgressCard ring={ring} />
-        <Animated.Image source={Images.bunnyImg1} resizeMode="stretch" style={[styles.bunny, { transform: [{ translateY: bunnyFloat }] }]} />
+        <AnimatedAppImage source={Images.bunnyImg1} resizeMode="stretch" style={[styles.bunny, { transform: [{ translateY: bunnyFloat }] }]} />
       </View>
       <View style={styles.taskStack}>
         <View style={styles.taskRowLeft}><TaskCard source={Images.task1Img} shown={tasks[0]} /></View>
@@ -46,12 +68,16 @@ export function OnboardingProgressView({ isActive }: { isActive: boolean }) {
 function TaskCard({ source, shown }: { source: number; shown: Animated.Value }) {
   return (
     <Animated.View style={[styles.taskBox, { opacity: shown, transform: [{ translateX: shown.interpolate({ inputRange: [0, 1], outputRange: [-s(40), 0] }) }] }]}>
-      <Image source={source} resizeMode="stretch" style={styles.taskArt} />
+      <AppImage source={source} resizeMode="stretch" style={styles.taskArt} />
     </Animated.View>
   );
 }
 
-function ProgressCard({ ring }: { ring: Animated.Value }) {
+function ProgressCard({ ring }: { ring: SharedValue<number> }) {
+  // Runs on the UI thread; only plain numbers are captured, never `s()`.
+  const ringProps = useAnimatedProps(() => ({
+    strokeDashoffset: RING_FULL_LENGTH - ring.value * RING_SWEEP_LENGTH,
+  }));
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -65,7 +91,7 @@ function ProgressCard({ ring }: { ring: Animated.Value }) {
           <Circle cx={s(53)} cy={s(53)} r={s(RING_RADIUS)} stroke="#FDE6F1" strokeWidth={s(8.5)} fill="none" />
           {/* SwiftUI trims from 3 o'clock clockwise, then rotates -90 and mirrors X. */}
           <G transform={`translate(${s(53)} ${s(53)}) scale(-1 1) rotate(-90) translate(${-s(53)} ${-s(53)})`}>
-            <AnimatedCircle
+            <ReanimatedCircle
               cx={s(53)}
               cy={s(53)}
               r={s(RING_RADIUS)}
@@ -73,8 +99,8 @@ function ProgressCard({ ring }: { ring: Animated.Value }) {
               strokeWidth={s(9)}
               strokeLinecap="round"
               fill="none"
-              strokeDasharray={[s(CIRCUMFERENCE), s(CIRCUMFERENCE)]}
-              strokeDashoffset={ring.interpolate({ inputRange: [0, 1], outputRange: [s(CIRCUMFERENCE), s(CIRCUMFERENCE * (1 - RING_SWEEP))] })}
+              strokeDasharray={[RING_FULL_LENGTH, RING_FULL_LENGTH]}
+              animatedProps={ringProps}
             />
           </G>
         </Svg>

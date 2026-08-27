@@ -40,6 +40,8 @@ export interface ChoreBuddyProduct {
   hasTrial: boolean;
   trialDays: number;
 }
+import { Analytics } from './Analytics';
+
 export interface PurchaseOutcome { hasPro: boolean; error: string | null }
 interface PurchaseContextValue {
   products: ChoreBuddyProduct[];
@@ -108,6 +110,7 @@ export function PurchaseProvider({ children }: React.PropsWithChildren) {
       hasProRef.current = pro;
       setHasPro(pro);
       setLoaded(true);
+      if (restoring && pro) Analytics.purchaseSuccess(active.map(p => p.productId).join(','), true);
       return { hasPro: pro, error: null };
     } catch (error) {
       if (__DEV__) console.warn('[Purchases] entitlement refresh failed', error);
@@ -127,6 +130,7 @@ export function PurchaseProvider({ children }: React.PropsWithChildren) {
         updated = purchaseUpdatedListener(async purchase => {
           if (purchase.purchaseState === 'pending') { const message = 'Purchase is pending approval.'; setError(message); settle({ hasPro: hasProRef.current, error: message }); return; }
           try { await finishTransaction({ purchase, isConsumable: false }); } catch (error) { if (__DEV__) console.warn('[Purchases] acknowledgement failed', error); }
+          Analytics.purchaseSuccess(purchase.productId, false);
           settle(await refresh());
         });
         failed = purchaseErrorListener((error: PurchaseError) => {

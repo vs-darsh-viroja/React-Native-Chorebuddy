@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Images } from '@/constants/assets';
 import { colors, font, isPad, isSmallDevice, isSmallPhone, s, screen } from '@/theme';
+import { AnimatedAppImage } from '@/components/AppImage';
 
 const CARDS = [
   Images.onboardingRatingFirstIcon, Images.onboardingRatingSecondIcon, Images.onboardingRatingThirdIcon,
@@ -23,6 +24,11 @@ export function OnboardingUserSayView({ isActive }: { isActive: boolean }) {
   const carousel = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Reset before the early return so an INACTIVE page never holds stale
+    // state to flash on its way back in (Rethrive's pager rule).
+    title.setValue(0);
+    subtitle.setValue(0);
+    carousel.setValue(0);
     if (!isActive) return;
     const reveal = (value: Animated.Value, at: number) => {
       value.setValue(0);
@@ -90,7 +96,7 @@ function ParallaxCarousel({ isActive }: { isActive: boolean }) {
       {CARDS.map((source, i) => {
         const anchor = anchorFor(i);
         return (
-          <Animated.Image
+          <AnimatedAppImage
             key={i}
             source={source}
             resizeMode="stretch"

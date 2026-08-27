@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { Images } from '@/constants/assets';
 import { colors, font, isBigPad, isPad, isSmallPhone, s } from '@/theme';
 import { FadeOutMask, TopGlow, artShadow } from './parts';
+import { AnimatedAppImage, AppImage } from '@/components/AppImage';
 
 const BASE_SIZE = 75;
 const AVATARS = [
@@ -73,7 +74,7 @@ export function OnboardingAvatarView({ isActive }: { isActive: boolean }) {
       <View style={styles.designBlock}>
         <View style={styles.cluster}>
           {AVATARS.map((source, index) => (
-            <Animated.Image
+            <AnimatedAppImage
               key={index}
               source={source}
               resizeMode="contain"
@@ -88,12 +89,12 @@ export function OnboardingAvatarView({ isActive }: { isActive: boolean }) {
             <View style={styles.plateCircleTop} />
             <View style={styles.plateCircleBottom} />
           </View>
-          <Image source={Images.avatarIcon1} resizeMode="stretch" style={styles.ownerAvatar} />
+          <AppImage source={Images.avatarIcon1} resizeMode="stretch" style={styles.ownerAvatar} />
           <View style={styles.ownerText}>
             <Text style={styles.ownerName}>Alisa</Text>
             <Text style={styles.ownerRole}>Home Owner</Text>
           </View>
-          <Animated.Image source={Images.crownIcon2} resizeMode="stretch" style={[styles.crown, { transform: [{ scale: crown }] }]} />
+          <AnimatedAppImage source={Images.crownIcon2} resizeMode="stretch" style={[styles.crown, { transform: [{ scale: crown }] }]} />
         </View>
       </View>
     </View>

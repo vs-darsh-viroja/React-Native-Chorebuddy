@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Images } from '@/constants/assets';
 import { colors, font, isBigPad, isSmallPhone, s } from '@/theme';
 import { GradientText, TopGlow, spring, useFloat } from './parts';
+import { AnimatedAppImage, AppImage } from '@/components/AppImage';
 
 const PINK: [string, string] = ['#FB4786', '#FD6A96'];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -32,11 +33,13 @@ export function OnboardingStreakView({ isActive }: { isActive: boolean }) {
   const scroll2 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!isActive) return;
+    // Reset before the early return so an INACTIVE page never holds stale
+    // state to flash on its way back in (Rethrive's pager rule).
     rolls.forEach(value => value.setValue(0));
     dayShown.forEach(value => value.setValue(0));
     scroll1.setValue(0);
     scroll2.setValue(0);
+    if (!isActive) return;
 
     Animated.parallel(
       rolls.map((value, index) => Animated.timing(value, { toValue: 1, duration: 550, delay: ROLL_DELAYS[index] * 1000, easing: Easing.out(Easing.ease), useNativeDriver: true })),
@@ -97,7 +100,7 @@ export function OnboardingStreakView({ isActive }: { isActive: boolean }) {
       </View>
 
       <View style={styles.canvas} pointerEvents="none">
-        <Animated.Image
+        <AnimatedAppImage
           source={Images.bunnyImg3}
           resizeMode="contain"
           style={[styles.bunny, { opacity: bunnyIn, transform: [{ translateY: Animated.add(bunnyIn.interpolate({ inputRange: [0, 1], outputRange: [s(40), 0] }), bunnyFloat) }] }]}
@@ -118,7 +121,7 @@ function MarqueeRow({ cards, base, progress, top }: { cards: number[]; base: num
     <View style={[styles.marqueeRow, { top: s(top) }]}>
       <Animated.View style={[styles.marqueeTrack, { transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [s(base), s(base - MARQUEE_UNIT)] }) }] }]}>
         {[0, 1, 2].flatMap(rep => cards.map((source, index) => (
-          <Image key={`${rep}-${index}`} source={source} resizeMode="stretch" style={styles.marqueeCard} />
+          <AppImage key={`${rep}-${index}`} source={source} resizeMode="stretch" style={styles.marqueeCard} />
         )))}
       </Animated.View>
     </View>
@@ -130,7 +133,7 @@ function StatCard({ gradient, iconBg, icon, iconSize, value, valueColor, label, 
     <Animated.View style={[styles.statCard, style]}>
       <LinearGradient colors={gradient} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.statCardFill}>
         <View style={[styles.statIcon, { backgroundColor: iconBg }]}>
-          <Image source={icon} resizeMode="contain" style={{ width: s(iconSize), height: s(iconSize) }} tintColor={colors.white} />
+          <AppImage source={icon} resizeMode="contain" style={{ width: s(iconSize), height: s(iconSize) }} tintColor={colors.white} />
         </View>
         <View style={styles.statText}>
           <Text style={[styles.statValue, { color: valueColor }]}>{value}</Text>
@@ -148,8 +151,8 @@ function DayColumn({ day, status, shown }: { day: string; status: Status; shown:
     <View style={styles.dayColumn}>
       <Text style={styles.dayLabel}>{day}</Text>
       <View style={styles.dayFace}>
-        <Animated.Image source={Images.upcomingDayImg} resizeMode="contain" style={[styles.dayFaceArt, { opacity: shown.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} />
-        <Animated.Image
+        <AnimatedAppImage source={Images.upcomingDayImg} resizeMode="contain" style={[styles.dayFaceArt, { opacity: shown.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} />
+        <AnimatedAppImage
           source={FACE[status]}
           resizeMode="contain"
           style={[styles.dayFaceArt, { opacity: shown, transform: [{ scale: shown.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }] }]}
