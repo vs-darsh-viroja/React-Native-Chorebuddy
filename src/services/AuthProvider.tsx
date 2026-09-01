@@ -2,6 +2,7 @@ import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { GoogleSignin, isCancelledResponse, isErrorWithCode, statusCodes } from '@react-native-google-signin/google-signin';
 import { Alert } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Analytics } from './Analytics';
 import { Crashlytics } from './Crashlytics';
@@ -13,7 +14,15 @@ const db = firestore();
 /** GMS `CommonStatusCodes.DEVELOPER_ERROR`; the native module rejects with it as a string. */
 const DEVELOPER_ERROR_CODE = 10;
 
-type AuthValue = { loading: boolean; user: FirebaseAuthTypes.User | null; signInGoogle(): Promise<void>; signOut(): Promise<void>; deleteAccount(): Promise<void> };
+/**
+ * iOS `AuthManager.SignInProvider`. Android only offers Google (Apple Sign-In is
+ * the requested omission), but the state is kept as a provider rather than a
+ * boolean so `SignInView` can show the loader inside the button that was pressed,
+ * exactly as iOS does.
+ */
+export type SignInProvider = 'google';
+
+type AuthValue = { loading: boolean; loadingProvider: SignInProvider | null; user: FirebaseAuthTypes.User | null; signInGoogle(): Promise<void>; signOut(): Promise<void>; deleteAccount(): Promise<void> };
 const Context = createContext<AuthValue | null>(null);
 
 /**
@@ -113,6 +122,7 @@ async function transferOrDeleteHousehold(uid: string) {
 
 export function AuthProvider({ children }: React.PropsWithChildren) {
   const [loading, setLoading] = useState(true);
+  const [loadingProvider, setLoadingProvider] = useState<SignInProvider | null>(null);
   const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
   useEffect(() => auth().onAuthStateChanged(next => { setUser(next); setLoading(false); }), []);
 
@@ -139,8 +149,13 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
 
   const value = useMemo<AuthValue>(() => ({
     loading,
+    loadingProvider,
     user,
+    // iOS `performGoogleSignIn` holds `loadingProvider` for the whole flow and
+    // clears it in a `defer`, so the sign-in button owns the progress indicator
+    // and the screen never swaps out from under the user mid-flow.
     signInGoogle: async () => {
+      setLoadingProvider('google');
       try {
         const credential = await googleCredential();
         if (!credential) return;
@@ -149,9 +164,12 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
         Analytics.setUserId(result.user.uid);
         Crashlytics.setUserId(result.user.uid);
         Analytics.signIn('google');
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (error) {
         Crashlytics.record(error);
         Alert.alert('Sign-In Failed', describeSignInError(error));
+      } finally {
+        setLoadingProvider(null);
       }
     },
     signOut: async () => {
@@ -176,7 +194,7 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
         await purge(current);
       }
     },
-  }), [loading, user]);
+  }), [loading, loadingProvider, user]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

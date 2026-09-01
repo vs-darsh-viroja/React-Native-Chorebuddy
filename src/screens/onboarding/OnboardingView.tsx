@@ -22,7 +22,21 @@ const COPY = [
   { title: '', subtitle: '' },
 ];
 const TOTAL = COPY.length;
-const PAGE_REVEAL_DELAY = 200;
+/**
+ * The reveal now starts the instant the pager lands.
+ *
+ * This was 180 → 300 → 200 across earlier passes, all of it compensating for
+ * activation happening MID-DRAG: the page used to become `active` as soon as the
+ * scroll crossed the dead zone, so the delay held its art back until the pager had
+ * visually settled. Activation has been driven by `settled` (momentum end) since
+ * 2026-08-24, so the delay no longer defers anything — it is just dead time.
+ *
+ * Measured on the user's screen recording of a swipe onto page 1: the page landed
+ * at t=1.07s and the first pixel of content appeared at t=1.35s, i.e. 278ms of a
+ * completely empty page between the swipe finishing and anything showing up. That
+ * empty beat, followed by everything popping in at once, is the reported jerk.
+ */
+const PAGE_REVEAL_DELAY = 0;
 
 function PageReveal({ active, children }: { active: boolean; children: React.ReactNode }) {
   const opacity = useRef(new Animated.Value(0)).current;

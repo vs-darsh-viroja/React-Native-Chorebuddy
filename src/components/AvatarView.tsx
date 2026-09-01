@@ -42,22 +42,57 @@ export async function encodeAvatarPhoto(uri: string, width: number, height: numb
   return null;
 }
 
+/** iOS `cameraSettingsAlert` / photo-access alert, shared by both pickers. */
+function accessDeniedAlert(camera: boolean) {
+  Alert.alert(
+    camera ? 'Camera Access Disabled' : 'Photo Access Disabled',
+    camera
+      ? 'Camera access is turned off for ChoreBuddy. Enable it in Settings to take a photo.'
+      : 'Photo access is turned off for ChoreBuddy. Enable it in Settings to choose a photo.',
+    [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }],
+  );
+}
+
+/** iOS `PhotosPicker(maxSelectionCount: 10)` — the chore-photo cap on both screens. */
+export const MAX_CHORE_PHOTOS = 10;
+
+/**
+ * iOS chore photos come from
+ * `PhotosPicker(selection: $photoItems, maxSelectionCount: 10, matching: .images)`
+ * — a MULTI-select picker with no cropping stage. Android was reusing
+ * `pickAvatarPhoto`, which is the single-image square-crop picker, so a chore
+ * could only ever gain one photo per tap and each one was cropped.
+ *
+ * `limit` is how many more photos will fit under `MAX_CHORE_PHOTOS`, so the system
+ * picker enforces the remaining budget itself rather than silently discarding the
+ * overflow after the user picked it.
+ *
+ * `allowsEditing` is deliberately absent: it is mutually exclusive with
+ * `allowsMultipleSelection`, and iOS's picker does not crop either.
+ */
+export async function pickChorePhotos(limit: number): Promise<string[]> {
+  if (limit <= 0) return [];
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) { accessDeniedAlert(false); return []; }
+  const result = await ImagePicker.launchImageLibraryAsync({ allowsMultipleSelection: true, selectionLimit: limit, quality: 1 });
+  if (result.canceled) return [];
+  const encoded: string[] = [];
+  for (const asset of result.assets.slice(0, limit)) {
+    const data = await encodeAvatarPhoto(asset.uri, asset.width, asset.height);
+    if (data) encoded.push(data);
+  }
+  if (!encoded.length) { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return []; }
+  void Haptics.selectionAsync();
+  return encoded;
+}
+
 /**
  * iOS `CameraImagePicker` / `GalleryImagePicker` plus `cameraSettingsAlert`:
  * pick a square image and return it already encoded for `members.photoData`.
  */
 export async function pickAvatarPhoto(camera: boolean): Promise<string | null> {
   const permission = camera ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) {
-    Alert.alert(
-      camera ? 'Camera Access Disabled' : 'Photo Access Disabled',
-      camera
-        ? 'Camera access is turned off for ChoreBuddy. Enable it in Settings to take a photo.'
-        : 'Photo access is turned off for ChoreBuddy. Enable it in Settings to choose a photo.',
-      [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }],
-    );
-    return null;
-  }
+  if (!permission.granted) { accessDeniedAlert(camera); return null; }
   const options: ImagePicker.ImagePickerOptions = { allowsEditing: true, aspect: [1, 1], quality: 1 };
   const result = camera ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
   if (result.canceled) return null;

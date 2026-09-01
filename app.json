@@ -7,18 +7,13 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "icon": "./assets/images/app-icon.png",
-    "splash": {
-      "image": "./assets/images/splash.png",
-      "resizeMode": "cover",
-      "backgroundColor": "#FBF7FD"
-    },
     "android": {
       "package": "chores.tracker.chorebuddy",
-      "versionCode": 2,
+      "versionCode": 4,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FBF7FD"
+        "backgroundColor": "#FBCBC9"
       },
       "permissions": [
         "POST_NOTIFICATIONS"
@@ -34,6 +29,26 @@
       "@react-native-firebase/app",
       "@react-native-firebase/crashlytics",
       "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FED6DC",
+          "image": "./assets/images/splash-blank.png",
+          "imageWidth": 1,
+          "dark": {
+            "backgroundColor": "#FED6DC",
+            "image": "./assets/images/splash-blank.png",
+            "imageWidth": 1
+          }
+        }
+      ],
+      [
+        "./plugins/withLaunchScreenFill",
+        {
+          "image": "./assets/images/splash.png"
+        }
+      ],
+      "./plugins/withQuickActionIcons",
       "expo-notifications",
       [
         "expo-build-properties",
@@ -42,12 +57,17 @@
             "minSdkVersion": 26
           }
         }
-      ]
+      ],
+      "expo-quick-actions"
     ],
     "extra": {
       "eas": {
         "projectId": "74467cdc-e59f-4f92-9268-b6b6b632ce9e"
       }
+    },
+    "androidStatusBar": {
+      "barStyle": "dark-content",
+      "translucent": true
     }
   }
 }

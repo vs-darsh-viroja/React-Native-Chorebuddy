@@ -7,7 +7,7 @@ import * as Sharing from 'expo-sharing';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Images } from '@/constants/assets';
-import { CheckmarkGlyph, ChevronGlyph, CrossGlyph, MoreDotsGlyph } from '@/components/glyphs';
+import { CheckmarkGlyph, ChevronGlyph, CrossGlyph, MoreDotsGlyph, PauseGlyph } from '@/components/glyphs';
 import { CircleButton, PressScale, SlideInCard, SoftGlow, useFloat } from '@/components/motion';
 import { ChartDownloadSheet, ChartMemberSheet, ScheduleFilterSheet, ZoneTile, emptyScheduleFilter, scheduleFilterActive, type ReportPeriod, type ScheduleFilter } from '@/components/ScheduleSheets';
 import { useChores, type Chore } from '@/services/ChoreContext';
@@ -227,18 +227,29 @@ function MemberCard({ entry, weekDays, todayIndex }: { entry: MemberVM; weekDays
   );
 }
 
-/** iOS `statusCell`: 26×22 rounded tile whose fill and glyph encode the outcome. */
+/**
+ * iOS `statusCell`: 26×22 rounded tile whose fill and glyph encode the outcome.
+ *
+ * Deliberate divergence from iOS, at the user's request: iOS `cellGlyph` draws
+ * the same member-coloured dot for `.noTask` and `.snoozed`, so a snoozed
+ * occurrence is indistinguishable from a day with nothing scheduled. Snoozed
+ * now gets the pause glyph on the app's snooze accent (the purple
+ * `ChoreStatusView` already themes the Snoozed state with), and the dot is
+ * reserved for genuinely empty days.
+ */
 function StatusCell({ cell, color }: { cell: Cell; color: string }) {
   const background = cell === 'completed' ? '#9BD38126'
     : cell === 'missed' ? '#FF57571A'
       : cell === 'skipped' ? '#FB8C071A'
-        : `${color}0D`;
+        : cell === 'snoozed' ? `${colors.purple}1A`
+          : `${color}0D`;
   return (
     <View style={[styles.cell, { backgroundColor: background }]}>
       {cell === 'completed' && <CheckmarkGlyph width={s(8)} height={s(6)} color="#9BD381" strokeWidth={1.75} />}
       {cell === 'missed' && <CrossGlyph size={s(6)} color="#FF8181" strokeWidth={1.5} />}
       {cell === 'skipped' && <View style={styles.skipBar} />}
-      {(cell === 'noTask' || cell === 'snoozed') && <View style={[styles.noTaskDot, { backgroundColor: color }]} />}
+      {cell === 'snoozed' && <PauseGlyph width={s(6)} height={s(7.5)} color={colors.purple} />}
+      {cell === 'noTask' && <View style={[styles.noTaskDot, { backgroundColor: color }]} />}
     </View>
   );
 }
@@ -250,6 +261,7 @@ function ChartLegend() {
       <LegendItem label="Completed"><CheckmarkGlyph width={s(9)} height={s(7)} color="#9BD381" strokeWidth={1.6} /></LegendItem>
       <LegendItem label="Missed"><CrossGlyph size={s(7)} color="#FF8181" strokeWidth={1.6} /></LegendItem>
       <LegendItem label="Skipped"><View style={styles.skipBar} /></LegendItem>
+      <LegendItem label="Snoozed"><PauseGlyph width={s(6.5)} height={s(8)} color={colors.purple} /></LegendItem>
       <LegendItem label="No Task"><View style={[styles.noTaskDot, { backgroundColor: colors.purple }]} /></LegendItem>
     </View>
   );
@@ -295,7 +307,21 @@ function monthWeekOffsets() {
   return offsets;
 }
 
-const CELL_TEXT: Record<Cell, string> = { completed: '✓', missed: '✕', skipped: '–', snoozed: '•', noTask: '', pending: '' };
+/**
+ * Report cell marks. These mirror `StatusCell`, so the printed chart reads the
+ * same as the screen: snoozed is the pause symbol and the dot means no task.
+ * The pause is inline SVG rather than a glyph character so the print engine
+ * cannot substitute a missing font.
+ */
+const PAUSE_SVG = `<svg width="6" height="8" viewBox="0 0 6 8" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="2.2" height="8" rx="1.1" fill="#9871E8"/><rect x="3.8" y="0" width="2.2" height="8" rx="1.1" fill="#9871E8"/></svg>`;
+const CELL_TEXT: Record<Cell, string> = {
+  completed: '<span class="ok">✓</span>',
+  missed: '<span class="no">✕</span>',
+  skipped: '<span class="sk">–</span>',
+  snoozed: PAUSE_SVG,
+  noTask: '<span class="nt">•</span>',
+  pending: '',
+};
 
 /**
  * Android report generation. iOS renders SwiftUI cards into a PDF via
@@ -321,7 +347,12 @@ function reportHtml(sections: string) {
     table{border-collapse:collapse;width:100%;font-size:10px}
     th,td{border:1px solid #E4DCF0;padding:6px;text-align:left}
     th{background:#F2ECFF}.c{text-align:center;width:22px}
-  </style></head><body><h1>Chores Chart</h1>${sections}</body></html>`;
+    .ok{color:#5EA83F}.no{color:#FF5757}.sk{color:#FB8C07}.nt{color:#9871E8}
+    .key{font-size:10px;color:#1F1F1F99;margin:0 0 14px}.key span{margin-right:12px}
+    .key svg{vertical-align:-1px}
+  </style></head><body><h1>Chores Chart</h1>
+  <p class="key"><span class="ok">✓ Completed</span><span class="no">✕ Missed</span><span class="sk">– Skipped</span><span class="nt">${PAUSE_SVG} Snoozed</span><span class="nt">• No Task</span></p>
+  ${sections}</body></html>`;
 }
 
 async function deliverPdf(html: string, print: boolean) {
@@ -345,7 +376,7 @@ const styles = StyleSheet.create({
   mirrored: { transform: [{ scaleX: -1 }] },
   weekLabel: { flex: 1, textAlign: 'center', ...font('medium', 14), color: colors.white },
   scroll: { paddingHorizontal: s(15), paddingTop: s(20), paddingBottom: s(140) },
-  legend: { flexDirection: 'row', justifyContent: 'space-between', paddingBottom: s(8) },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: s(6), rowGap: s(6), paddingBottom: s(8) },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
   legendGlyph: { width: s(13), height: s(13), alignItems: 'center', justifyContent: 'center' },
   legendLabel: { ...font('regular', 11), color: colors.text },

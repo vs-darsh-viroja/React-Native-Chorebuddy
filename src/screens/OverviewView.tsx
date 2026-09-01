@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Images } from '@/constants/assets';
 import { CheckmarkGlyph } from '@/components/glyphs';
@@ -24,6 +25,7 @@ const formatDay = (day: string) => { const date = new Date(`${day}T00:00:00`); r
 /** iOS `OverviewView`: header with back + delete-history, floating mascot, name/zone row, tri-segment control, and the swipeable dated history card. */
 export function OverviewView({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'Overview'>) {
   const store = useChores();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const float = useFloat(8, 1.8);
   const [segment, setSegment] = useState(0);
@@ -89,7 +91,14 @@ export function OverviewView({ navigation, route }: NativeStackScreenProps<RootS
         ))}
       </View>
 
-      <View style={styles.listCard}>
+      {/*
+        * iOS's card is the flexible element in a VStack that ignores the safe area,
+        * so it ends exactly 30 above the screen edge — where an iPhone's home
+        * indicator sits. Android's window includes the navigation-bar zone under
+        * edge-to-edge, and s(30) is ~34dp against a 48dp three-button bar, so the
+        * card's bottom edge and its rounded corners were rendering BEHIND the bar.
+        */}
+      <View style={[styles.listCard, { marginBottom: Math.max(s(30), insets.bottom + s(12)) }]}>
         <ScrollView
           ref={pager}
           horizontal
@@ -127,7 +136,7 @@ export function OverviewView({ navigation, route }: NativeStackScreenProps<RootS
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  header: { paddingTop: s(59), paddingHorizontal: s(15), alignItems: 'center', justifyContent: 'center' },
+  header: { paddingTop: s(59), paddingHorizontal: s(15), height: s(99), alignItems: 'center', justifyContent: 'center' },
   headerTitle: { ...font('semibold', 24), color: colors.text },
   headerButtons: { position: 'absolute', top: s(59), left: s(15), right: s(15), flexDirection: 'row', justifyContent: 'space-between' },
   headerIcon: { width: s(20), height: s(20) },
@@ -142,7 +151,7 @@ const styles = StyleSheet.create({
   segmentButton: { flex: 1, height: s(40), alignItems: 'center', justifyContent: 'center' },
   segmentLabel: { ...font('medium', 14) },
   segmentLabelOn: { ...font('semibold', 14), color: colors.white },
-  listCard: { flex: 1, marginHorizontal: s(15), marginTop: s(20), marginBottom: s(30), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, overflow: 'hidden', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
+  listCard: { flex: 1, marginHorizontal: s(15), marginTop: s(20), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, overflow: 'hidden', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   listContent: { padding: s(15) },
   emptyText: { ...font('regular', 14), color: `${colors.text}66`, textAlign: 'center', paddingVertical: s(24) },
   dateRow: { height: s(26), flexDirection: 'row', alignItems: 'center', gap: s(10) },

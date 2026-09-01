@@ -3,6 +3,7 @@ import { Alert, Animated, Linking, Pressable, ScrollView, Share, StyleSheet, Tex
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Images } from '@/constants/assets';
 import { CircleButton, PressScale } from '@/components/motion';
@@ -38,6 +39,7 @@ function ModernToggle({ value, onValueChange }: { value: boolean; onValueChange(
 
 /** iOS `SettingsView`: Try Pro banner, notification toggle, Members, feedback/support cards, and the log out / leave / delete actions. */
 export function SettingsView({ navigation }: NativeStackScreenProps<RootStackParamList, 'Settings'>) {
+  const insets = useSafeAreaInsets();
   const auth = useAuth();
   const household = useHousehold();
   const store = useChores();
@@ -113,8 +115,15 @@ export function SettingsView({ navigation }: NativeStackScreenProps<RootStackPar
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {!purchases.hasPro && !config.showLifeTimeBannerAtHome && <GiftBanner />}
+      {/* iOS ends the list with `Spacer().frame(height: 60)` inside a safe-area-respecting
+          ScrollView, so that 60 sits above the home indicator. Android's scroll spans the
+          window, so the inset is added to keep the same clearance over the navigation bar. */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: s(60) + insets.bottom }]}>
+        {/* iOS `SettingsView`: `!purchaseManager.hasPro && !remoteConfigManager.showLifeTimeBannerAtHome`
+            — deliberately NO timer check, so an expired countdown still shows the banner here;
+            the pill itself is what `LifeTimeGiftOfferBannerView` hides (opacity 0) when the flag
+            is off. `config.ready` keeps it from rendering under the in-app default first. */}
+        {config.ready && !purchases.hasPro && !config.showLifeTimeBannerAtHome && <GiftBanner />}
 
         {!purchases.hasPro && (
           <PressScale onPress={() => navigation.push('Paywall')} style={styles.proBanner}>

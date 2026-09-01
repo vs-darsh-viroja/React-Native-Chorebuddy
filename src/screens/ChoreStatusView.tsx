@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Images } from '@/constants/assets';
-import { BottomSheet, SheetCTA, SheetHeader, useSheet } from '@/components/BottomSheet';
+import { BottomSheet, SheetCTA, SheetHeader, sheetFooterPad, useSheet } from '@/components/BottomSheet';
 import { ChevronGlyph, DueOnGlyph } from '@/components/glyphs';
 import { SnoozeUntilSheet } from '@/components/ScheduleSheets';
 import { CircleButton, PressScale, useFloat } from '@/components/motion';
@@ -255,6 +255,7 @@ const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const CORAL = '#FF5757';
 
 function DoneSheetBody({ occurrenceDay, onDone }: { occurrenceDay: Date; onDone(date: Date): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const [selected, setSelected] = useState(occurrenceDay);
   const [visibleMonth, setVisibleMonth] = useState(() => { const base = new Date(occurrenceDay); base.setDate(1); base.setHours(0, 0, 0, 0); return base; });
@@ -303,7 +304,7 @@ function DoneSheetBody({ occurrenceDay, onDone }: { occurrenceDay: Date; onDone(
           })}
         </View>
       </View>
-      <View style={styles.sheetFooter}>
+      <View style={[styles.sheetFooter, { paddingBottom: sheetFooterPad(55, insets.bottom) }]}>
         <SheetCTA label="Done" shadow onPress={() => { const picked = selected; close(() => onDone(picked)); }} />
       </View>
     </>
@@ -312,7 +313,7 @@ function DoneSheetBody({ occurrenceDay, onDone }: { occurrenceDay: Date; onDone(
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  header: { paddingTop: s(isSmallPhone ? 40 : 59), paddingHorizontal: s(15), alignItems: 'center', justifyContent: 'center' },
+  header: { paddingTop: s(isSmallPhone ? 40 : 59), paddingHorizontal: s(15), height: s(isSmallPhone ? 80 : 99), alignItems: 'center', justifyContent: 'center' },
   headerTitle: { ...font('semibold', 24), lineHeight: s(28.6), includeFontPadding: false, color: colors.text },
   headerButtons: { position: 'absolute', top: s(isSmallPhone ? 40 : 59), left: s(15), right: s(15), flexDirection: 'row', justifyContent: 'space-between' },
   headerIcon: { width: s(20), height: s(20) },

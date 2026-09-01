@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { Images } from '@/constants/assets';
-import { BottomSheet, SheetHeader, useSheet } from '@/components/BottomSheet';
+import { BottomSheet, SheetHeader, sheetFooterPad, useSheet } from '@/components/BottomSheet';
 import { CapsuleCTA, PressScale } from '@/components/motion';
 import { pickAvatarPhoto } from '@/components/AvatarView';
 import { avatarImages, avatarNames, avatarSource } from '@/screens/household/HouseholdUI';
@@ -22,6 +23,7 @@ export function SelectOptionSheet({ onPicked, onClose }: { onPicked(photoData: s
 }
 
 function SelectOptionBody({ onPicked }: { onPicked(photoData: string): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const choose = (camera: boolean) => {
     close(() => {
@@ -31,7 +33,7 @@ function SelectOptionBody({ onPicked }: { onPicked(photoData: string): void }) {
   return (
     <>
       <SheetHeader title="Select Option" />
-      <View style={styles.optionRow}>
+      <View style={[styles.optionRow, { paddingBottom: sheetFooterPad(55, insets.bottom) }]}>
         <OptionCard label="Camera" onPress={() => choose(true)} glyph={<CameraGlyph />} />
         <OptionCard label="Gallery" onPress={() => choose(false)} glyph={<GalleryGlyph />} />
       </View>
@@ -48,22 +50,51 @@ function OptionCard({ label, glyph, onPress }: { label: string; glyph: React.Rea
   );
 }
 
-/** SF Symbol `camera.fill` has no RN equivalent; these trace the same silhouettes. */
+/**
+ * iOS draws these with `Image(systemName: "camera.fill" / "photo.fill")` at
+ * `.font(.system(size: 30))`. SF Symbols cannot ship on Android — they are Apple
+ * artwork and there is no RN equivalent — so both glyphs are drawn here, to the
+ * REAL symbols' geometry: the two symbols were rendered on macOS at 120pt and
+ * measured (row-by-row alpha scans), then divided by 4 to land on iOS's 30pt
+ * numbers. Nothing Apple-authored is bundled; only the proportions are matched.
+ *
+ * At 30pt the symbols measure: `camera.fill` ink 36.0 x 28.0 inside a 43.5 x 32
+ * layout box, `photo.fill` ink 34.8 x 27.0 inside 42.25 x 31. The Svg keeps the
+ * ~2-unit vertical bearing so the VStack's 12 gap to the label matches iOS; the
+ * previous glyphs were drawn edge-to-edge in a 30x30 box, which is why they read
+ * as blockier and squarer than iOS's.
+ *
+ * Knockouts are filled with `colors.white` — the option card's own fill — because
+ * `react-native-svg` has no "erase" and the card behind is white.
+ */
 function CameraGlyph() {
   return (
-    <Svg width={s(30)} height={s(30)} viewBox="0 0 30 30">
-      <Path d="M4 9.5h4.2l1.6-2.6h10.4l1.6 2.6H26a2 2 0 012 2v11a2 2 0 01-2 2H4a2 2 0 01-2-2v-11a2 2 0 012-2z" fill={colors.text} />
-      <Circle cx={15} cy={17} r={4.6} fill={colors.background} />
+    <Svg width={s(36)} height={s(32)} viewBox="0 0 36 32">
+      {/* Body: corner radius 3.8, top edge at 6.4, with the viewfinder hump
+          flaring out of it at x 8.8..27.2 and cresting flat from 14.6 to 21.2. */}
+      <Path
+        d="M4 6.4h4.8c1.4 0 2.6-3.8 5.8-4.4h6.8c3.2.6 4.4 4.4 5.8 4.4H32a3.8 3.8 0 013.8 3.8v15.8A3.8 3.8 0 0132 29.8H4A3.8 3.8 0 01.2 26V10.2A3.8 3.8 0 014 6.4z"
+        fill={colors.text}
+      />
+      {/* Lens: iOS draws a ring — measured outer r 7.9, core r 5.7, centre (17.9, 15.6). */}
+      <Circle cx={17.9} cy={17.6} r={7.9} fill={colors.white} />
+      <Circle cx={17.9} cy={17.6} r={5.7} fill={colors.text} />
+      {/* Flash dot: centre (30.25, 9.4), r 1.75. */}
+      <Circle cx={30.3} cy={11.4} r={1.75} fill={colors.white} />
     </Svg>
   );
 }
 
 function GalleryGlyph() {
   return (
-    <Svg width={s(30)} height={s(30)} viewBox="0 0 30 30">
-      <Path d="M4 5h22a2 2 0 012 2v16a2 2 0 01-2 2H4a2 2 0 01-2-2V7a2 2 0 012-2z" fill={colors.text} />
-      <Circle cx={9.5} cy={11} r={2.4} fill={colors.background} />
-      <Path d="M4.5 23l6.8-7.4 4.3 4.6 3.6-3.2 6.3 6z" fill={colors.background} />
+    <Svg width={s(34.8)} height={s(31)} viewBox="0 0 34.8 31">
+      {/* Frame: 34.8 x 27 at corner radius 4.0. */}
+      <Path d="M4 2h26.8a4 4 0 014 4v19a4 4 0 01-4 4H4a4 4 0 01-4-4V6a4 4 0 014-4z" fill={colors.text} />
+      {/* Sun: centre (11.1, 10) r 3.5. */}
+      <Circle cx={11.1} cy={12} r={3.5} fill={colors.white} />
+      {/* Landscape: small left peak, tall right peak, and the base band —
+          x 2.5..32.0, bottom 24.4, bottom corners rounded r 2. */}
+      <Path d="M8.8 18.2l5.1 3.3 9.6-6.7 8.5 6.8v2.8a2 2 0 01-2 2H4.5a2 2 0 01-2-2v-2.8z" fill={colors.white} />
     </Svg>
   );
 }
@@ -141,6 +172,7 @@ export function CreateProfileSheet({ title, initialName = '', initialAvatar = 'm
 }
 
 function CreateProfileBody({ title, initialName, initialAvatar, initialPhotoData, isDuplicateName, onSave }: { title: string; initialName: string; initialAvatar: string; initialPhotoData?: string; isDuplicateName(name: string): boolean; onSave(name: string, avatar: string, photoData?: string): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const [name, setName] = useState(initialName);
   const [avatar, setAvatar] = useState(initialAvatar || 'member1');
@@ -166,7 +198,7 @@ function CreateProfileBody({ title, initialName, initialAvatar, initialPhotoData
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formScroll}>
         <ProfileFormCards name={name} setName={setName} avatar={avatar} setAvatar={setAvatar} photoData={photoData} setPhotoData={setPhotoData} nameError={nameError} onAddPhoto={() => setShowOptions(true)} />
       </ScrollView>
-      <View style={styles.formFooter}>
+      <View style={[styles.formFooter, { paddingBottom: sheetFooterPad(30, insets.bottom) }]}>
         <CapsuleCTA label={title === 'Edit Profile' ? 'Save' : 'Create'} onPress={save} disabled={!canSave} dimWhenDisabled={0.5} />
       </View>
       {showOptions && <SelectOptionSheet onPicked={setPhotoData} onClose={() => setShowOptions(false)} />}

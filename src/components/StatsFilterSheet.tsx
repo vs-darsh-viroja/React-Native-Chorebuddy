@@ -3,6 +3,7 @@ import { Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Images } from '@/constants/assets';
+import { ChoreCalendarGlyph } from '@/components/glyphs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PeekBunny, PeekHands, SheetCheckbox, useSheetAnimation } from '@/components/BottomSheet';
 import { PressScale } from '@/components/motion';
@@ -231,7 +232,7 @@ function StatsRangePicker({ start, end, onDone, onClose }: { start: string | nul
               <View key={String(label)} style={styles.dateField}>
                 <Text style={styles.dateLabel}>{label as string}</Text>
                 <View style={[styles.dateBox, value ? { backgroundColor: 'transparent', borderColor: active ? `${colors.text}99` : `${colors.text}1A` } : null]}>
-                  <View style={{ opacity: value ? 0.7 : 0.3 }}><Images.choreCalendarIcon width={s(20)} height={s(20)} /></View>
+                  <ChoreCalendarGlyph size={s(20)} color={`${colors.text}${value ? 'B3' : '4D'}`} />
                   <Text style={[styles.dateValue, !value && { color: `${colors.text}4D` }]}>{fieldText(value as string | null)}</Text>
                 </View>
               </View>

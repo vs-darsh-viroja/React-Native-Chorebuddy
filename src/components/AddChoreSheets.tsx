@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Images } from '@/constants/assets';
-import { BottomSheet, SheetCheckbox, SheetHeader, SheetRadio, useSheet } from '@/components/BottomSheet';
+import { BottomSheet, SheetCheckbox, SheetHeader, SheetRadio, useSheet, sheetFooterPad } from '@/components/BottomSheet';
 import { AvatarView } from '@/components/AvatarView';
 import { AlarmGlyph, CheckmarkGlyph, ChevronGlyph, ChoreCalendarGlyph } from '@/components/glyphs';
 import { CapsuleCTA, PressScale } from '@/components/motion';
@@ -31,6 +31,7 @@ export function CalendarSheet({ date, minimumDate, onPick, onClose }: { date: Da
 }
 
 function CalendarBody({ date, minimumDate, onPick }: { date: Date; minimumDate?: Date; onPick(next: Date): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const [selected, setSelected] = useState(date);
   const [visibleMonth, setVisibleMonth] = useState(() => { const base = new Date(date); base.setDate(1); base.setHours(0, 0, 0, 0); return base; });
@@ -85,7 +86,7 @@ function CalendarBody({ date, minimumDate, onPick }: { date: Date; minimumDate?:
         </View>
       </View>
       <View style={styles.spacer} />
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: sheetFooterPad(55, insets.bottom) }]}>
         <CapsuleCTA label="Done" onPress={() => close()} />
       </View>
     </>
@@ -102,6 +103,7 @@ export function TimeSheet({ time, onPick, onClose }: { time: Date; onPick(next: 
 }
 
 function TimeBody({ time, onPick }: { time: Date; onPick(next: Date): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const [value, setValue] = useState(time);
   return (
@@ -111,7 +113,7 @@ function TimeBody({ time, onPick }: { time: Date; onPick(next: Date): void }) {
         <TimeWheel date={value} onChange={next => { setValue(next); onPick(next); }} />
       </View>
       <View style={styles.spacer} />
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: sheetFooterPad(55, insets.bottom) }]}>
         <CapsuleCTA label="Done" onPress={() => close()} />
       </View>
     </>
@@ -128,6 +130,7 @@ export function MonthDaySheet({ day, onPick, onClose }: { day: number; onPick(ne
 }
 
 function MonthDayBody({ day, onPick }: { day: number; onPick(next: number): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const [selected, setSelected] = useState(day);
   return (
@@ -145,7 +148,7 @@ function MonthDayBody({ day, onPick }: { day: number; onPick(next: number): void
           );
         })}
       </View>
-      <View style={styles.footerTall}>
+      <View style={[styles.footerTall, { paddingBottom: sheetFooterPad(55, insets.bottom) }]}>
         <CapsuleCTA label="Done" onPress={() => close()} />
       </View>
     </>
@@ -160,6 +163,26 @@ export const REMINDER_NOTIFY_OPTIONS = [
   { title: '1 Week Before', subtitle: '1 week before the due date' },
 ] as const;
 
+/**
+ * Bottom padding for an ABSOLUTELY positioned sheet footer, so both shapes end up
+ * at the app-wide `Math.max(s(30), insets.bottom + s(16))` above the WINDOW edge.
+ *
+ * Yoga ignores the parent's padding once an inset is defined — in
+ * `AbsoluteLayout.cpp`'s `positionAbsoluteChild`, the flex-end branch subtracts
+ * border and margin and never padding — so `bottom: 0` measures from the parent's
+ * BORDER box. That makes the two nestings behave differently:
+ *
+ *   - a footer whose parent IS the sheet card sits at the window edge, so it
+ *     carries the whole offset itself (`liftedByCard: false`);
+ *   - a footer nested inside a flow child of the card — the assign sheet's
+ *     `flex: 1` pager — has ALREADY been lifted by the card's
+ *     `paddingBottom: insets.bottom`, so repeating the full offset double-counts
+ *     it. That is what pushed the assign sheet's Done button to ~114dp above the
+ *     window instead of ~66dp on a 48dp navigation bar.
+ */
+const ctaPadBottom = (bottomInset: number, liftedByCard: boolean) =>
+  (liftedByCard ? Math.max(s(30) - bottomInset, s(16)) : Math.max(s(30), bottomInset + s(16)));
+
 /** iOS `ReminderSheet`: two selectable fields switching the card below between the time wheel and the notify options. */
 export function ReminderSheet({ time, notify, notifyMode, onTime, onNotify, onClose }: { time: Date; notify: string; notifyMode: boolean; onTime(next: Date): void; onNotify(next: string): void; onClose(): void }) {
   return (
@@ -170,6 +193,7 @@ export function ReminderSheet({ time, notify, notifyMode, onTime, onNotify, onCl
 }
 
 function ReminderBody({ time, notify, notifyMode, onTime, onNotify }: { time: Date; notify: string; notifyMode: boolean; onTime(next: Date): void; onNotify(next: string): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const [mode, setMode] = useState(notifyMode);
   const [value, setValue] = useState(time);
@@ -194,20 +218,34 @@ function ReminderBody({ time, notify, notifyMode, onTime, onNotify }: { time: Da
       </View>
 
       {mode ? (
-        <View style={styles.optionsCard}>
-          {REMINDER_NOTIFY_OPTIONS.map((option, index) => (
-            <React.Fragment key={option.title}>
-              {index > 0 && <View style={styles.optionDivider} />}
-              <Pressable onPress={() => { void Haptics.selectionAsync(); setChoice(option.title); onNotify(option.title); }} style={styles.optionRow}>
-                <View style={styles.optionCopy}>
-                  <Text style={styles.optionTitle}>{option.title}</Text>
-                  <Text style={styles.optionSubtitle}>{option.subtitle}</Text>
-                </View>
-                <SheetRadio on={choice === option.title} />
-              </Pressable>
-            </React.Fragment>
-          ))}
-        </View>
+        /*
+         * iOS sizes this list naturally inside a 0.78-height card and lets the
+         * `Spacer` take the slack. Android has ~48dp less room (the card's
+         * `paddingBottom: insets.bottom` for the navigation bar), so the five rows
+         * plus the footer can exceed the card — and because the card is
+         * `overflow: hidden` and bottom-anchored to the WINDOW, the overflow pushed
+         * the Done button off the bottom of the screen.
+         *
+         * `flexShrink: 1` on the scroller keeps iOS's natural height whenever it
+         * fits and hands the list a scroll only when it does not, so the footer is
+         * always reachable regardless of screen height or the user's font scale.
+         */
+        <ScrollView style={styles.optionsScroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.optionsScrollContent}>
+          <View style={styles.optionsCard}>
+            {REMINDER_NOTIFY_OPTIONS.map((option, index) => (
+              <React.Fragment key={option.title}>
+                {index > 0 && <View style={styles.optionDivider} />}
+                <Pressable onPress={() => { void Haptics.selectionAsync(); setChoice(option.title); onNotify(option.title); }} style={styles.optionRow}>
+                  <View style={styles.optionCopy}>
+                    <Text style={styles.optionTitle}>{option.title}</Text>
+                    <Text style={styles.optionSubtitle}>{option.subtitle}</Text>
+                  </View>
+                  <SheetRadio on={choice === option.title} />
+                </Pressable>
+              </React.Fragment>
+            ))}
+          </View>
+        </ScrollView>
       ) : (
         <View style={styles.wheelCard}>
           <TimeWheel date={value} onChange={next => { setValue(next); onTime(next); }} />
@@ -215,7 +253,7 @@ function ReminderBody({ time, notify, notifyMode, onTime, onNotify }: { time: Da
       )}
 
       <View style={styles.spacer} />
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: sheetFooterPad(55, insets.bottom) }]}>
         <CapsuleCTA label="Done" onPress={() => close()} />
       </View>
     </>
@@ -224,11 +262,12 @@ function ReminderBody({ time, notify, notifyMode, onTime, onNotify }: { time: Da
 
 /** iOS `PhotosSheet`: two-column grid of square tiles with a trash button per photo. */
 export function PhotosSheet({ photos, allowDelete = true, onDelete, onClose }: { photos: string[]; allowDelete?: boolean; onDelete(index: number): void; onClose(): void }) {
+  const insets = useSafeAreaInsets();
   return (
     <BottomSheet onClose={onClose} bunny="leading">
       <>
         <SheetHeader title="Photos" />
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.photoGrid}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.photoGrid, { paddingBottom: sheetFooterPad(40, insets.bottom) }]}>
           {photos.map((photo, index) => (
             <View key={`${index}-${photo.slice(0, 12)}`} style={styles.photoCell}>
               <AppImage source={{ uri: `data:image/jpeg;base64,${photo}` }} style={styles.photoImage} />
@@ -314,7 +353,7 @@ function ChangeZoneBody({ initialZoneName, onSelect }: { initialZoneName: string
       </ScrollView>
       <View style={styles.assignFooter}>
         <LinearGradient colors={[`${colors.background}00`, colors.background]} style={styles.assignFade} pointerEvents="none" />
-        <View style={[styles.assignCta, { paddingBottom: Math.max(s(30), insets.bottom + s(16)) }]}>
+        <View style={[styles.assignCta, { paddingBottom: ctaPadBottom(insets.bottom, false) }]}>
           <CapsuleCTA label="Done" onPress={() => { const picked = selected; close(() => onSelect(picked)); }} />
         </View>
       </View>
@@ -326,16 +365,27 @@ function ChangeZoneBody({ initialZoneName, onSelect }: { initialZoneName: string
  * iOS `AssignMemberSheet`: a two-page sheet (member list ↔ create profile) that
  * slides horizontally, at 0.72 screen height.
  */
-export function AssignMemberSheet({ selected, onToggle, onCreate, onClose }: { selected: string[]; onToggle(id: string): void; onCreate(name: string, avatar: string, photoData?: string): void; onClose(): void }) {
+/**
+ * The tick marks are a DRAFT: nothing reaches the caller until Done is pressed, so
+ * dismissing the sheet with ✕, the backdrop or a drag discards the changes. iOS
+ * writes its `@Binding var selected` on every tap, which means a dismissed sheet
+ * still mutates the chore being edited — a deliberate, user-requested divergence.
+ *
+ * `onCreate` is NOT part of the draft: creating a household member is a real
+ * mutation of its own and still commits immediately, as on iOS.
+ */
+export function AssignMemberSheet({ selected, onSave, onCreate, onClose }: { selected: string[]; onSave(ids: string[]): void; onCreate(name: string, avatar: string, photoData?: string): void; onClose(): void }) {
   return (
     <BottomSheet onClose={onClose} height={screen.height * 0.72} bunny="leading">
-      <AssignMemberBody selected={selected} onToggle={onToggle} onCreate={onCreate} />
+      <AssignMemberBody selected={selected} onSave={onSave} onCreate={onCreate} />
     </BottomSheet>
   );
 }
 
-function AssignMemberBody({ selected, onToggle, onCreate }: { selected: string[]; onToggle(id: string): void; onCreate(name: string, avatar: string, photoData?: string): void }) {
+function AssignMemberBody({ selected, onSave, onCreate }: { selected: string[]; onSave(ids: string[]): void; onCreate(name: string, avatar: string, photoData?: string): void }) {
   const { close } = useSheet();
+  /** Seeded once from the caller; every tick edits this copy only. */
+  const [draft, setDraft] = useState<string[]>(selected);
   const insets = useSafeAreaInsets();
   const { members, myMemberId } = useHousehold();
   const { width } = useWindowDimensions();
@@ -390,15 +440,15 @@ function AssignMemberBody({ selected, onToggle, onCreate }: { selected: string[]
         ) : (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.assignList}>
             {shown.map(member => (
-              <MemberRow key={member.id} member={member} isYou={member.id === myMemberId} picked={selected.includes(member.id)} onPress={() => { void Haptics.selectionAsync(); onToggle(member.id); }} />
+              <MemberRow key={member.id} member={member} isYou={member.id === myMemberId} picked={draft.includes(member.id)} onPress={() => { void Haptics.selectionAsync(); setDraft(current => (current.includes(member.id) ? current.filter(item => item !== member.id) : [...current, member.id])); }} />
             ))}
           </ScrollView>
         )}
 
         <View style={styles.assignFooter}>
           <LinearGradient colors={[`${colors.background}00`, colors.background]} style={styles.assignFade} pointerEvents="none" />
-          <View style={[styles.assignCta, { paddingBottom: Math.max(s(30), insets.bottom + s(16)) }]}>
-            <CapsuleCTA label="Done" onPress={() => close()} />
+          <View style={[styles.assignCta, { paddingBottom: ctaPadBottom(insets.bottom, true) }]}>
+            <CapsuleCTA label="Done" onPress={() => { const picked = draft; close(() => onSave(picked)); }} />
           </View>
         </View>
       </View>
@@ -414,7 +464,7 @@ function AssignMemberBody({ selected, onToggle, onCreate }: { selected: string[]
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.createScroll}>
           <ProfileFormCards name={name} setName={setName} avatar={avatar} setAvatar={setAvatar} photoData={photoData} setPhotoData={setPhotoData} nameError={null} onAddPhoto={() => undefined} />
         </ScrollView>
-        <View style={styles.createFooter}>
+        <View style={[styles.createFooter, { paddingBottom: sheetFooterPad(30, insets.bottom) }]}>
           <CapsuleCTA label="Create" onPress={save} disabled={!canSave} dimWhenDisabled={0.5} />
         </View>
       </View>
@@ -477,16 +527,18 @@ const styles = StyleSheet.create({
 
   fieldsCard: { flexDirection: 'row', gap: s(15), marginHorizontal: s(15), marginTop: s(20), padding: s(15), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   fieldColumn: { flex: 1, gap: s(6) },
-  fieldLabel: { ...font('regular', 12), color: `${colors.text}80` },
+  fieldLabel: { ...font('regular', 12), lineHeight: s(14.3), includeFontPadding: false, color: `${colors.text}80` },
   field: { flexDirection: 'row', alignItems: 'center', gap: s(10), padding: s(14), borderRadius: s(12), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A` },
   fieldActive: { borderWidth: 1.5, borderColor: colors.purple },
   fieldGlyph: { width: s(20), height: s(20), opacity: 0.5 },
-  fieldValue: { ...font('regular', 14), color: colors.text, flexShrink: 1 },
+  fieldValue: { ...font('regular', 14), lineHeight: s(16.7), includeFontPadding: false, color: colors.text, flexShrink: 1 },
+  optionsScroll: { flexShrink: 1 },
+  optionsScrollContent: { paddingBottom: s(4) },
   optionsCard: { marginHorizontal: s(15), marginTop: s(15), paddingHorizontal: s(15), paddingVertical: s(5), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   optionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: s(12) },
   optionCopy: { gap: s(4) },
-  optionTitle: { ...font('medium', 15), color: colors.text },
-  optionSubtitle: { ...font('regular', 12), color: `${colors.text}80` },
+  optionTitle: { ...font('medium', 15), lineHeight: s(17.9), includeFontPadding: false, color: colors.text },
+  optionSubtitle: { ...font('regular', 12), lineHeight: s(14.3), includeFontPadding: false, color: `${colors.text}80` },
   optionDivider: { height: 1, backgroundColor: `${colors.text}1A` },
 
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: s(12), paddingHorizontal: s(15), paddingTop: s(20), paddingBottom: s(40) },

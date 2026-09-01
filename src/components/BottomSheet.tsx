@@ -120,7 +120,6 @@ export function BottomSheet({ onClose, height = SHEET_HEIGHT, bunny = 'offset', 
           </View>
           {bunny !== 'none' && <PeekHands style={bunny === 'leading' ? styles.handsLeading : undefined} />}
         </Animated.View>
-        <KeyboardDoneBar />
       </View>
     </SheetContext.Provider>
   );
@@ -128,7 +127,35 @@ export function BottomSheet({ onClose, height = SHEET_HEIGHT, bunny = 'offset', 
 
 
 /**
+ * Bottom padding for a footer that sits at the bottom of a sheet CARD, in flow
+ * layout.
+ *
+ * The card pads `insets.bottom` for the navigation bar, and a flow child inherits
+ * that — so a footer that ALSO carries its full iOS design offset ends up with the
+ * two stacked. iOS's 55 is ~63dp of design offset here; adding a 48dp bar on top
+ * put the Done button 111dp above the window edge instead of ~63.
+ *
+ * Subtracting the inset makes the TOTAL `Math.max(s(design), insets.bottom + s(16))`
+ * from the window edge — the same rule every bottom CTA in the app follows, and
+ * within ~3dp of iOS's own offset on a three-button bar. On a gesture-nav device
+ * with no inset it is exactly the iOS value.
+ *
+ * A new sheet that forgets this still gets the card's inset, so the failure mode
+ * stays "slightly over-padded" rather than "CTA behind the navigation bar".
+ */
+export function sheetFooterPad(design: number, bottomInset: number) {
+  return Math.max(s(design) - bottomInset, s(16));
+}
+
+/**
  * KeyboardDoneBar — hand-built copy of SC9 ChatView's keyboard "Done" button.
+ *
+ * MOUNTED ONCE AT THE APP ROOT (`App.tsx`), not per sheet. iOS gets this bar over
+ * EVERY text field in the app, from `SceneDelegate`'s
+ * `IQKeyboardManager.shared.enableAutoToolbar = true` (QuickActionManager.swift) —
+ * so a screen-level field like Chore Detail's notes has it too, which it did not
+ * when this lived inside `BottomSheet`. Rendering it last in the root tree also
+ * keeps it above any open sheet.
  *
  * SC9 gets this from `react-native-keyboard-controller`'s `<KeyboardToolbar>`,
  * which ChoreBuddy does not depend on; SC9's own note records that the library
@@ -143,7 +170,7 @@ export function BottomSheet({ onClose, height = SHEET_HEIGHT, bunny = 'offset', 
  * These are raw pixel values, NOT `s()`-scaled — the library does not scale
  * them either, and matching SC9 exactly is the requirement.
  */
-function KeyboardDoneBar() {
+export function KeyboardDoneBar() {
   const kbHeight = useKeyboardHeight();
   const insets = useSafeAreaInsets();
   if (kbHeight <= 0) return null;

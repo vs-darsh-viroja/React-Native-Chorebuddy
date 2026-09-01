@@ -14,14 +14,23 @@ const COUNTDOWN_MS = 24 * 60 * 60 * 1000;
 const startKey = 'countdown_start_date';
 const expiredKey = 'isCountdownExpired';
 
-type GiftTimerValue = { hours: number; minutes: number; seconds: number; isExpired: boolean };
+/**
+ * `ready` is false until the stored start date has been read back.
+ *
+ * iOS's `TimerManager` reads `UserDefaults` synchronously in its initialiser, so
+ * `isExpired` is correct on the first render. AsyncStorage is a promise, so without
+ * this flag every consumer sees `isExpired: false` first — the "offer is live"
+ * state — and only corrects itself a frame later, which is half of why the gift
+ * banner appeared and then vanished.
+ */
+type GiftTimerValue = { hours: number; minutes: number; seconds: number; isExpired: boolean; ready: boolean };
 
-const zero: GiftTimerValue = { hours: 0, minutes: 0, seconds: 0, isExpired: false };
+const zero: GiftTimerValue = { hours: 0, minutes: 0, seconds: 0, isExpired: false, ready: false };
 const Context = createContext<GiftTimerValue>(zero);
 
 const split = (remainingMs: number) => {
   const total = Math.max(0, Math.floor(remainingMs / 1000));
-  return { hours: Math.floor(total / 3600), minutes: Math.floor(total / 60) % 60, seconds: total % 60, isExpired: false };
+  return { hours: Math.floor(total / 3600), minutes: Math.floor(total / 60) % 60, seconds: total % 60, isExpired: false, ready: true };
 };
 
 export function GiftTimerProvider({ children }: React.PropsWithChildren) {
@@ -35,7 +44,7 @@ export function GiftTimerProvider({ children }: React.PropsWithChildren) {
     const expire = () => {
       void AsyncStorage.setItem(expiredKey, 'true');
       startedAt.current = null;
-      if (alive) setState({ ...zero, isExpired: true });
+      if (alive) setState({ ...zero, isExpired: true, ready: true });
     };
 
     const tick = () => {
@@ -48,7 +57,7 @@ export function GiftTimerProvider({ children }: React.PropsWithChildren) {
     void (async () => {
       const [expired, stored] = await Promise.all([AsyncStorage.getItem(expiredKey), AsyncStorage.getItem(startKey)]);
       if (!alive) return;
-      if (expired === 'true') { setState({ ...zero, isExpired: true }); return; }
+      if (expired === 'true') { setState({ ...zero, isExpired: true, ready: true }); return; }
 
       const parsed = Number(stored);
       if (stored && Number.isFinite(parsed)) {
@@ -69,7 +78,7 @@ export function GiftTimerProvider({ children }: React.PropsWithChildren) {
     return () => { alive = false; if (timer) clearInterval(timer); subscription.remove(); };
   }, []);
 
-  const value = useMemo(() => state, [state.hours, state.minutes, state.seconds, state.isExpired]);
+  const value = useMemo(() => state, [state.hours, state.minutes, state.seconds, state.isExpired, state.ready]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

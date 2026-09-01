@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Images } from '@/constants/assets';
-import { BottomSheet, SheetCTA, SheetCheckbox, SheetHeader, SheetRadio, useSheet } from '@/components/BottomSheet';
+import { BottomSheet, SheetCTA, SheetCheckbox, SheetHeader, SheetRadio, sheetFooterPad, useSheet } from '@/components/BottomSheet';
 import { CheckmarkGlyph, ChoreCalendarGlyph, MoreDotsGlyph, ZoneCalendarGlyph } from '@/components/glyphs';
 import { PressScale } from '@/components/motion';
 import { predefinedZoneSections, zoneIcon, zonePalettes } from '@/models/zones';
@@ -182,6 +182,7 @@ export function ChartDownloadSheet({ members, onDownload, onClose }: { members: 
 }
 
 function ChartDownloadBody({ members, onDownload }: { members: HouseholdMember[]; onDownload(period: ReportPeriod, memberIds: string[]): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const [tab, setTab] = useState(0);
   const [period, setPeriod] = useState<ReportPeriod>('thisWeek');
@@ -253,7 +254,7 @@ function ChartDownloadBody({ members, onDownload }: { members: HouseholdMember[]
         )}
       </View>
 
-      <View style={styles.downloadFooter}>
+      <View style={[styles.downloadFooter, { paddingBottom: sheetFooterPad(30, insets.bottom) }]}>
         <SheetCTA
           label="Download"
           disabled={disabled}
@@ -276,6 +277,7 @@ export function ChartMemberSheet({ memberId, memberName, weekDays, onChoreTap, o
 }
 
 function ChartMemberBody({ memberId, memberName, weekDays, onChoreTap }: { memberId: string; memberName: string; weekDays: Date[]; onChoreTap(chore: Chore, day: Date): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const store = useChores();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -298,7 +300,7 @@ function ChartMemberBody({ memberId, memberName, weekDays, onChoreTap }: { membe
   return (
     <>
       <SheetHeader title={`Chores for ${memberName}`} borderOpacity={0.5} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.memberSheetContent} onScrollBeginDrag={() => setOpenMenu(null)}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.memberSheetContent, { paddingBottom: sheetFooterPad(30, insets.bottom) }]} onScrollBeginDrag={() => setOpenMenu(null)}>
         {groups.map(group => (
           <View key={group.name} style={styles.zoneGroup}>
             <View style={styles.zoneGroupHead}>
@@ -412,6 +414,7 @@ export function SnoozeUntilSheet({ baseDate, onDone, onClose }: { baseDate: Date
 }
 
 function SnoozeUntilBody({ baseDate, onDone }: { baseDate: Date; onDone(target: Date): void }) {
+  const insets = useSafeAreaInsets();
   const { close } = useSheet();
   const [selected, setSelected] = useState(0);
   const target = (days: number) => { const date = new Date(baseDate); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + days); return date; };
@@ -433,7 +436,7 @@ function SnoozeUntilBody({ baseDate, onDone }: { baseDate: Date; onDone(target: 
           );
         })}
       </View>
-      <View style={styles.snoozeFooter}>
+      <View style={[styles.snoozeFooter, { paddingBottom: sheetFooterPad(30, insets.bottom) }]}>
         <SheetCTA label="Done" onPress={() => { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); const date = target(SNOOZE_PRESETS[selected]); close(() => onDone(date)); }} />
       </View>
     </>

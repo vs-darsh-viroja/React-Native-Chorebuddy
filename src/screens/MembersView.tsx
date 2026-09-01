@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Images } from '@/constants/assets';
-import { CheckmarkGlyph, CopyGlyph, EditGlyph, MemberAddGlyph, ShareGlyph } from '@/components/glyphs';
+import { CheckmarkGlyph, CopyGlyph, EditGlyph, MemberAddGlyph, ShareGlyph, ZoneCalendarGlyph } from '@/components/glyphs';
 import { BlinkingBunny, BottomFade, CapsuleCTA, CircleButton, PressScale, SlideInCard, SoftGlow } from '@/components/motion';
 import { CreateProfileSheet, ProfileFormCards, SelectOptionSheet } from '@/components/ProfileSheets';
 import { AvatarView } from '@/components/AvatarView';
@@ -137,7 +137,7 @@ export function MembersView({ navigation }: NativeStackScreenProps<RootStackPara
         </View>
       ) : (
         <>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: s(140) + insets.bottom }]}>
             <View style={styles.ownerCard}>
               <Pressable onPress={() => { if (owner) { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); navigation.push('MemberDetail', { memberId: owner.id }); } }} style={styles.ownerRow}>
                 <View style={styles.ownerAvatarWrap}>
@@ -215,7 +215,7 @@ export function MembersView({ navigation }: NativeStackScreenProps<RootStackPara
           </ScrollView>
 
 
-          <BottomFade height={184} />
+          <BottomFade height={184} extra={Math.max(0, Math.max(s(20), insets.bottom + s(12)) - s(20))} />
           <View style={[styles.bottomCta, { bottom: Math.max(s(20), insets.bottom + s(12)) }]}>
             <CapsuleCTA label="Add New Member" showPlus onPress={openAdd} />
           </View>
@@ -285,6 +285,7 @@ const TABS = ['Due', 'Completed', 'Skipped', 'Missed'] as const;
 
 /** iOS `ProfileDetailView`: avatar with an edit badge, weekly face streak, three stat cards, and the Due/Completed/Skipped/Missed chore tabs. */
 export function MemberDetailView({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'MemberDetail'>) {
+  const insets = useSafeAreaInsets();
   const household = useHousehold();
   const store = useChores();
   const [tab, setTab] = useState(0);
@@ -360,7 +361,14 @@ export function MemberDetailView({ navigation, route }: NativeStackScreenProps<R
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
+      {/*
+        * iOS's ScrollView respects the safe area (only the BACKGROUND carries
+        * `.ignoresSafeArea`), so its `.padding(.bottom, 40)` is 40 above the safe-area
+        * edge. Android's scroll spans the whole window, so 40 design units (~46dp) was
+        * all that stood between the last chore card and a 48dp navigation bar — the
+        * card ended up flush with it. Adding the inset restores iOS's real clearance.
+        */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.detailContent, { paddingBottom: s(40) + insets.bottom }]}>
         <View style={styles.avatarBlock}>
           <View style={styles.bigAvatarWrap}>
             <View style={styles.bigAvatar}><MemberAvatar member={member} size={107} /></View>
@@ -518,7 +526,9 @@ function DueCardBody({ chore }: { chore: Chore }) {
       </View>
       <View style={styles.dueBottom}>
         <View style={[styles.badge, { backgroundColor: `${colors.blue}1A` }]}>
-          <Images.zoneCalendarIcon width={s(14)} height={s(14)} />
+          {/* iOS: `Image(.zoneCalendarIcon).renderingMode(.template).foregroundColor(DueState.today.accent)`.
+              The raw asset bakes `fill="black"`, so it must go through the tintable glyph. */}
+          <ZoneCalendarGlyph size={s(14)} color={colors.blue} />
           <Text style={[styles.badgeText, { color: colors.blue }]}>Today</Text>
         </View>
         <View style={styles.progressBlock}>
@@ -606,7 +616,7 @@ export function EditProfileView({ navigation, route }: NativeStackScreenProps<Ro
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.editContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.editContent, { paddingBottom: s(160) + insets.bottom }]}>
         <View style={styles.avatarBlock}>
           <View style={styles.bigAvatar}>
             <AvatarView avatar={avatar} photoData={photoData} size={s(107)} style={styles.bigAvatarImage} />
@@ -616,7 +626,7 @@ export function EditProfileView({ navigation, route }: NativeStackScreenProps<Ro
         <ProfileFormCards name={name} setName={setName} avatar={avatar} setAvatar={setAvatar} photoData={photoData} setPhotoData={setPhotoData} nameError={duplicate ? 'A member with this name already exists.' : null} onAddPhoto={() => setShowOptions(true)} />
       </ScrollView>
 
-      <BottomFade height={184} />
+      <BottomFade height={184} extra={Math.max(0, Math.max(s(20), insets.bottom + s(12)) - s(20))} />
       <View style={[styles.bottomCta, { bottom: Math.max(s(20), insets.bottom + s(12)) }]}>
         <CapsuleCTA label="Save Changes" onPress={save} disabled={!canSave} dimWhenDisabled={0.5} />
       </View>

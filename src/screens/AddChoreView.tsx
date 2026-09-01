@@ -1,18 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Alert, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Images } from '@/constants/assets';
 import { AssignMemberSheet, CalendarSheet, MonthDaySheet, PhotosSheet, REMINDER_NOTIFY_OPTIONS, ReminderSheet, TimeSheet, timeLabel } from '@/components/AddChoreSheets';
-import { AvatarView, pickAvatarPhoto } from '@/components/AvatarView';
+import { AvatarView, MAX_CHORE_PHOTOS, pickChorePhotos } from '@/components/AvatarView';
 import { AlarmGlyph, ArrowGlyph, CheckmarkGlyph, ChevronGlyph, ChoreCalendarGlyph, PhotosGlyph, ReminderGlyph, SchedCustomGlyph, SchedDailyGlyph, SchedOneTimeGlyph, SubtasksGlyph } from '@/components/glyphs';
 import { CapsuleCTA, PressScale } from '@/components/motion';
 import { SheetRadio } from '@/components/BottomSheet';
 import { InlineWheel } from '@/components/WheelPicker';
 import { dueAccent, dueBarGradient, dueTrackFill, liveDueState } from '@/models/dueState';
 import { predefinedZoneSections, zoneIcon, zonePalettes } from '@/models/zones';
+import { useKeyboardAutoScroll } from '@/hooks/useKeyboardAutoScroll';
 import { useChores } from '@/services/ChoreContext';
 import { useHousehold } from '@/services/HouseholdContext';
 import { replaceChorePhotos } from '@/services/ChorePhotos';
@@ -20,6 +21,7 @@ import { usePurchases } from '@/services/PurchaseManager';
 import { colors, font, s } from '@/theme';
 import type { RootStackParamList } from '@/navigation/types';
 import { AnimatedAppImage, AppImage } from '@/components/AppImage';
+import { Spinner } from '@/components/Spinner';
 
 const CORAL = '#FF5757';
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -67,7 +69,13 @@ const newField = (): Field => ({ id: `f${(fieldSeed += 1)}`, text: '' });
 
 /** iOS `AddChoreView`: the four-step New Chore wizard (Zone → Chore → Schedule → More). */
 export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'AddChore'>) {
+  // iOS wraps only the More step in a `ScrollViewReader` (AddChoreView.swift:1799),
+  // so the custom-name field on step 2 deliberately does not auto-scroll.
+  const autoScroll = useKeyboardAutoScroll();
   const insets = useSafeAreaInsets();
+  // iOS puts this CTA 20 above the window bottom; Android lifts it clear of the
+  // navigation bar, and the bottom fade grows by the same amount (see BottomFade).
+  const ctaBottom = Math.max(s(20), insets.bottom + s(12));
   const store = useChores();
   const household = useHousehold();
   const { hasPro } = usePurchases();
@@ -222,9 +230,20 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
     navigation.goBack();
   };
 
+  /**
+   * iOS opens `PhotosPicker(maxSelectionCount: 10)`, so one trip through the
+   * picker can add up to ten photos at once.
+   *
+   * Deliberate divergence: iOS's `loadPhotos()` here REPLACES the list
+   * (`photoImages = images`), which is only safe because SwiftUI's PhotosPicker
+   * keeps its `selection` binding — reopening it shows the previous picks still
+   * ticked. Android's system picker starts empty every time, so replacing would
+   * silently drop everything added in an earlier trip. Appending under the same
+   * 10 cap is what iOS's Edit screen does too.
+   */
   const pickPhotos = async () => {
-    const encoded = await pickAvatarPhoto(false);
-    if (encoded) setPhotos(current => [...current, encoded].slice(0, 10));
+    const encoded = await pickChorePhotos(MAX_CHORE_PHOTOS - photos.length);
+    if (encoded.length) setPhotos(current => [...current, ...encoded].slice(0, MAX_CHORE_PHOTOS));
   };
 
   const continueBar = () => {
@@ -498,9 +517,11 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
                       <View key={id} style={styles.assignedCell}>
                         <View style={styles.assignedAvatar}>
                           <AvatarView avatar={member.avatar} photoData={member.photoData} size={s(46)} />
-                          <PressScale onPress={() => setAssigned(assigned.filter(item => item !== id))} style={styles.assignedRemove}>
-                            <Text style={styles.assignedRemoveText}>✕</Text>
-                          </PressScale>
+                          <View style={styles.assignedRemoveSlot}>
+                            <PressScale onPress={() => setAssigned(assigned.filter(item => item !== id))} style={styles.assignedRemove}>
+                              <Text style={styles.assignedRemoveText}>✕</Text>
+                            </PressScale>
+                          </View>
                         </View>
                         <Text style={styles.assignedName} numberOfLines={1}>{member.name}</Text>
                       </View>
@@ -519,7 +540,14 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
             <Text style={styles.pageTitle}>{choreName}</Text>
             <Text style={styles.pageSubtitle}>{heroZone.name}</Text>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.pageScroll} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            ref={autoScroll.ref}
+            onScroll={autoScroll.onScroll}
+            scrollEventThrottle={autoScroll.scrollEventThrottle}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.pageScroll, { paddingBottom: s(140) + autoScroll.padBottom }]}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={styles.card}>
               <View style={styles.stateRow}>
                 <Text style={styles.cardLabel}>Current State</Text>
@@ -551,6 +579,7 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
               {subtasks.map(field => (
                 <View key={field.id} style={styles.subtaskRow}>
                   <TextInput
+                    onFocus={autoScroll.onFocus}
                     value={field.text}
                     onChangeText={text => setSubtasks(subtasks.map(item => (item.id === field.id ? { ...item, text } : item)))}
                     placeholder="Enter sub task"
@@ -587,9 +616,17 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
                         </PressScale>
                       </View>
                     ))}
+                    {/*
+                      iOS `addThumbLabel` puts the bare `plusIcon` on `appBackground`
+                      — but that asset is pure WHITE (it is drawn for purple buttons),
+                      and white on #FBF7FD differs by (4,8,2)/255, i.e. the tile reads
+                      as an empty dashed box. Deliberate deviation, user-requested:
+                      the plus sits on the same 12% purple square iOS uses in
+                      `uploadBoxLabel`, so the affordance is actually visible.
+                    */}
                     {photos.length < 3 && (
                       <PressScale onPress={() => { void pickPhotos(); }} style={styles.addThumb}>
-                        <AppImage source={Images.plusIcon} resizeMode="contain" style={styles.uploadPlus} />
+                        <View style={styles.uploadIcon}><AppImage source={Images.plusIcon} resizeMode="contain" style={styles.uploadPlus} /></View>
                       </PressScale>
                     )}
                   </View>
@@ -606,6 +643,7 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
               {notes.map(field => (
                 <View key={field.id} style={styles.noteRow}>
                   <TextInput
+                    onFocus={autoScroll.onFocus}
                     value={field.text}
                     onChangeText={text => setNotes(notes.map(item => (item.id === field.id ? { ...item, text } : item)))}
                     placeholder="Add notes"
@@ -624,12 +662,12 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
         </View>
       </Animated.View>
 
-      <LinearGradient colors={[`${colors.background}00`, colors.background]} style={styles.bottomFade} pointerEvents="none" />
-      <View style={[styles.bottomBar, { bottom: Math.max(s(20), insets.bottom + s(12)) }]}>
+      <LinearGradient colors={[`${colors.background}00`, colors.background]} style={[styles.bottomFade, { height: s(184) + Math.max(0, ctaBottom - s(20)) }]} pointerEvents="none" />
+      <View style={[styles.bottomBar, { bottom: ctaBottom }]}>
         {step === 3 ? (
           <PressScale haptic="none" disabled={saving} onPress={() => { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); void save(); }} style={[styles.saveCta, saving && { opacity: 0.7 }]}>
             <View style={styles.saveInner}>
-              {saving ? <ActivityIndicator color={colors.white} /> : (
+              {saving ? <Spinner size={s(20)} color={colors.white} /> : (
                 <>
                   <CheckmarkGlyph width={s(16)} height={s(12)} color={colors.white} strokeWidth={2.4} />
                   <Text style={styles.saveLabel}>Save Chore</Text>
@@ -673,7 +711,7 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
       {sheet === 'member' && (
         <AssignMemberSheet
           selected={assigned}
-          onToggle={id => { setAssigned(current => (current.includes(id) ? current.filter(item => item !== id) : [...current, id])); setAttemptedAssign(false); clearValidation(); }}
+          onSave={ids => { setAssigned(ids); setAttemptedAssign(false); clearValidation(); }}
           onCreate={(name, avatar, photoData) => void household.addMember(name, avatar, photoData)}
           onClose={() => setSheet(null)}
         />
@@ -794,7 +832,8 @@ function PlusButton({ enabled, onPress }: { enabled: boolean; onPress(): void })
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   headerWrap: { paddingHorizontal: s(15), paddingTop: s(59) },
-  header: { alignItems: 'center', justifyContent: 'center' },
+  // iOS header height is its 40pt circle buttons; see ChoreDetailView's note.
+  header: { height: s(40), alignItems: 'center', justifyContent: 'center' },
   headerTitle: { ...font('semibold', 22), color: colors.text },
   headerButtons: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backCircle: { width: s(40), height: s(40), borderRadius: s(20), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(5), color: 'rgba(0,0,0,0.1)' }] },
@@ -905,7 +944,8 @@ const styles = StyleSheet.create({
   assignedRow: { gap: s(20), paddingTop: s(5) },
   assignedCell: { alignItems: 'center', gap: s(3) },
   assignedAvatar: { width: s(46), height: s(46) },
-  assignedRemove: { position: 'absolute', top: -s(4), right: -s(4), width: s(18), height: s(18), borderRadius: s(9), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center' },
+  assignedRemoveSlot: { position: 'absolute', top: -s(4), right: -s(4), zIndex: 2 },
+  assignedRemove: { width: s(18), height: s(18), borderRadius: s(9), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center' },
   assignedRemoveText: { fontSize: s(8), color: `${colors.text}99`, fontWeight: '600' },
   assignedName: { ...font('regular', 12), color: colors.text, maxWidth: s(60), textAlign: 'center' },
   assignError: { ...font('regular', 12), color: CORAL },
@@ -935,7 +975,7 @@ const styles = StyleSheet.create({
   uploadBox: { width: s(90), height: s(90), borderRadius: s(12), backgroundColor: colors.background, borderWidth: 1, borderStyle: 'dashed', borderColor: `${colors.text}33`, alignItems: 'center', justifyContent: 'center', gap: s(6) },
   uploadIcon: { width: s(28), height: s(28), borderRadius: s(7), backgroundColor: `${colors.purple}1F`, alignItems: 'center', justifyContent: 'center' },
   uploadPlus: { width: s(20), height: s(20) },
-  uploadLabel: { ...font('regular', 11), color: `${colors.text}80` },
+  uploadLabel: { ...font('regular', 11), lineHeight: s(13.1), includeFontPadding: false, color: `${colors.text}80` },
   viewAll: { ...font('medium', 12), color: colors.purple },
   thumbRow: { flexDirection: 'row', gap: s(10) },
   thumb: { width: s(90), height: s(90), borderRadius: s(12), overflow: 'hidden', borderWidth: 1, borderColor: `${colors.text}1A` },

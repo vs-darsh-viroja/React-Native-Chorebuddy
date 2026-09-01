@@ -77,8 +77,8 @@ The Android app must clone iOS content, layout, fonts, assets, colors, animation
 | Fonts | ✅ | 9/9 original OTF files |
 | Asset conversion | ✅ | 262/263 sets, generated registry |
 | Root onboarding | 🟡 | Seven-page flow and title animations built; per-page art choreography still needs line-by-line parity |
-| Paywall | 🟡 | Layout/selection/hero pulse built; real Play products and all RC variants pending |
-| Gift paywall | 🟡 | Art/countdown/price/CTA built; Play Billing pending |
+| Paywall | ✅ | iOS-exact layout/slider/RC variants; live Play products `com.chorebuddy.yearly` (base `chorebuddy-yearly` + `yearly-offer`) and `com.chorebuddy.weekly` (base `chorebuddy-weekly`) |
+| Gift paywall | ✅ | Art/countdown/price/CTA plus the Home+Settings banner; live Play product `com.chorebuddy.yearlygift` (base `chorebuddy-yearlygift`) |
 | Google/Firebase Auth | ✅ foundation | Google-only as requested; device verification pending |
 | Household setup | ✅ foundation | Exact users/households/members schema, listeners, create/join/claim flows; member admin/leave screens pending |
 | Notification prompt | ✅ | Exact copy/art/buttons; Android runtime permission via Expo Notifications |
@@ -549,6 +549,871 @@ Verification: `npm run typecheck` passes. Fix 1 is derived from the screenshot's
 
 Don't regress: `bottom: 0` inside `BottomSheet`'s card is the WINDOW bottom, not the safe-area edge — absolute footers carry their own inset. Never use a percentage `maxWidth`/`width` on a style passed to `PressScale`; it resolves against the wrapper `Pressable`, which is sized by that same view.
 
+### 2026-08-27 — Play internal-testing readiness pass (fresh signed AAB, permissions trimmed)
+
+Pre-upload audit before the first internal-testing release.
+
+**The documented force-update blocker is gone — verified, not assumed.** The 2026-08-24 entry warned that live Remote Config had `isForceUpdateRequired: true` / `minimumAppVersion: "1.1"` against an `app.json` version of `1.0.0`, which would hard-block every tester on the Update Required screen. Read the actual activated config off the device instead of trusting the note: `adb shell run-as chores.tracker.chorebuddy cat files/frc_<appId>_firebase_activate.json`. It now reports `isForceUpdateRequired: 'false'` and `minimumAppVersion: '1.0'`, so 1.0.0 ships fine. A version bump to 1.1.0 was made and then REVERTED once the real values came back — there was no reason to change the user-visible version. That RC dump is the fastest way to settle any "what is Remote Config actually set to" question while a debug build is installed.
+
+**versionCode 1 → 2.** An AAB carrying code 1 was built on 2026-08-21; if it ever reached Play, re-uploading code 1 is rejected. Bumped in both `app.json` and `android/app/build.gradle` (the embedded `app.config` asset confirms 1.0.0 / 2 reached the bundle).
+
+**Permissions trimmed to what the app uses.** The previous release manifest requested five things that create Play Console friction, none of which the app needs:
+- `RECORD_AUDIO` and `SYSTEM_ALERT_WINDOW` — Expo's legacy default permission list, unused here.
+- `SCHEDULE_EXACT_ALARM` — forces the exact-alarm policy declaration that only alarm/calendar apps qualify for. Chore reminders are fine with inexact alarms.
+- `com.google.android.gms.permission.AD_ID` — arrives with Firebase Analytics and forces an advertising-ID declaration; the app has no ads.
+- `READ/WRITE_EXTERNAL_STORAGE` unbounded — reads as broad storage access. Capped at `maxSdkVersion="32"`, which is safe because `ImagePickerModule.getMediaLibraryPermissions` returns an EMPTY array on TIRAMISU+ (Android 13 uses the system photo picker with no permission at all).
+
+Applied in two places on purpose: `android.blockedPermissions` in `app.json` so a future prebuild keeps them out, and `tools:node="remove"` / `tools:replace` directly in `android/app/src/main/AndroidManifest.xml` so no prebuild had to run — `expo prebuild` would have wiped the release signing block out of `android/app/build.gradle`.
+
+**Fresh AAB.** The Aug 21 artifact predates `expo-print`, `expo-sharing`, `expo-clipboard`, `expo-image-manipulator`, `expo-store-review` and Crashlytics, so it would have crashed on launch. `android/local.properties` was also missing (`sdk.dir`), which failed the first build attempt with "SDK location not found".
+
+Verification of the shipped bundle (`android/app/build/outputs/bundle/release/app-release.aab`, 133 MB, `BUILD SUCCESSFUL in 12m 14s`): signed by the upload key (`keytool -printcert -jarfile` → SHA1 `D2:BF:E1:E2:…:ED:0A`, `CN=ChoreBuddy`); bundle manifest reads `versionCode="2"` / `versionName="1.0.0"`; `RECORD_AUDIO`, `SYSTEM_ALERT_WINDOW`, `SCHEDULE_EXACT_ALARM` and the gms `AD_ID` are all absent; both storage permissions carry `maxSdkVersion="32"`. Also checked: targetSdk 36 (Play floor is 35), `minifyEnabled` false so there is no ProGuard risk, both `google-services.json` copies identical, `npx expo install --check` clean, no `BYPASS` left in the gate chain, and `freeChoreLimit`/`freeZoneLimit` are absent from RC but `setDefaults` supplies 10/5 so free users are not accidentally locked out.
+
+**Still account-side and still blocking sign-in:** Play App Signing re-signs the bundle, so an internal-testing install is signed with the APP SIGNING key, while `google-services.json` only carries the upload-key SHA-1 (`d2bfe1e2…`). Until the Play App Signing SHA-1 (Play Console → Setup → App signing) is added to the Firebase Android app, Google Sign-In fails with `DEVELOPER_ERROR` for every tester — and sign-in gates the whole app. The registration is server-side, so it needs no rebuild.
+
+**Upload outcome (2026-08-27 evening).** Internal testing now serves **3 (1.0.0)** — 76.4 MB for new installs, 21.1 MB updates, target SDK 36, 4 ABIs, 17,239 supported devices; bundle 2 is deactivated. Play's highest versionCode is therefore 3, and the repo has been moved to **4** so the next `bundleRelease` cannot collide. Bundle 3 reports 3 required features against bundle 2's 4, which is the `android.hardware.microphone` feature disappearing with `RECORD_AUDIO` — the permission trim is confirmed present in the live release.
+
+Testers immediately hit the predicted `DEVELOPER_ERROR` on Google Sign-In, since Play App Signing re-signs the bundle and only the upload key (`d2bfe1e2…`) is registered. The fingerprint to add is under Play Console → **App integrity** → App signing; the debug key (`5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`) is still unregistered too and should go in at the same time.
+
+Don't regress: `android/` is gitignored and prebuild rewrites `build.gradle`, so permission edits must live in `app.json` too, and the signing block must be re-applied after any `expo prebuild`. Bump `android.versionCode` in `app.json` for every Play upload — check the live value in Play Console first, since uploads can happen outside this repo.
+
+### 2026-08-27 — Assigned-member ✕ badge sat on the name, not the avatar corner
+
+Side-by-side iOS/Android shots of Edit Chore showed the remove badge in the wrong place: iOS puts it on the avatar's top-right corner, Android drew it bottom-left, overlapping the member's name.
+
+The iOS numbers were already right in both screens — `ChoreDetailView.swift` overlays the 46pt avatar `.topTrailing` with `.offset(x: 6, y: -2)`, `AddChoreView.swift`'s `memberAvatarCell` uses `.offset(x: 4, y: -4)`, and the RN styles carried exactly those values. The bug was WHERE they applied: `PressScale` puts the caller's `style` on an inner `Animated.View`, so `position: 'absolute'` resolved against the wrapping `Pressable` — an ordinary flow child sitting after the avatar in the column — instead of against the avatar. The badge therefore positioned itself relative to a box that sits next to the name.
+
+Fixed in both screens by moving the offset onto a plain wrapper `View` (`avatarRemoveSlot` / `assignedRemoveSlot`) and leaving only the circle's visual styling on the `PressScale`. `ChoreDetailView` also gained an explicit `avatarStack` (46x46) so the badge anchors to the avatar's frame rather than the whole cell, which is taller because of the name label — matching iOS, where the `.overlay` is attached to the avatar and the name lives outside it in the `VStack`.
+
+Swept the repo afterwards for any other `PressScale` whose style contains `position: 'absolute'`: none remain.
+
+Verification: `npm run typecheck` passes; the geometry is taken from the two iOS sources rather than eyeballed. Not device-verified this session.
+
+Don't regress: this is the third distinct symptom of the same root cause (Stats filter Save collapsing, the zone chip's percentage `maxWidth`, now this). ANY layout or positioning prop — `flex`, `position`, `top/right`, percentage `width`/`maxWidth` — must go on a wrapper around `PressScale`, never in its `style`, which lands on an inner view.
+
+### 2026-08-27 — Launcher icon looked zoomed: the adaptive foreground was full-bleed
+
+Side-by-side home screens showed the Android icon cropped to the bunny's head while iOS shows the whole scene (bunny + broom + bucket).
+
+Not an asset-quality problem. `assets/images/adaptive-icon.png` was a byte-identical copy of the 1024x1024 iOS artwork with **zero transparent padding** (measured: opaque bbox filled 1.000 of the canvas, and so did every generated `ic_launcher_foreground.webp` at all five densities). Android draws an adaptive icon's layers at 108dp and masks them to the central ~72dp safe zone, so an edge-to-edge foreground is effectively magnified 1.5x and only its middle two-thirds survives. iOS has no equivalent stage — its rounded-rect mask keeps ~96% of the artwork — which is why the same file looks right there and cropped here.
+
+- New foreground: transparent 108dp canvas with the artwork scaled to **72%** (~77.8dp). That fully covers the 72dp mask — so no background shows through on a circle or squircle — while keeping the whole scene inside the visible area. Written to `assets/images/adaptive-icon.png` (the prebuild source) **and** directly to `android/app/src/main/res/mipmap-{m,h,x,xx,xxx}dpi/ic_launcher_foreground.webp` as lossless WebP, because running `expo prebuild` would wipe the release signing block out of `android/app/build.gradle`.
+- `iconBackground` moved from the near-white `#FBF7FD` to **`#FBCBC9`**, the average of the artwork's own border pixels, so a launcher whose mask is larger than the safe zone reveals a colour continuous with the scene instead of a pale ring. Changed in both `app.json` and `android/app/src/main/res/values/colors.xml`.
+- `assets/images/app-icon.png` is deliberately untouched at full bleed — it is `expo.icon`, used for iOS and the store listing, where edge-to-edge is correct.
+
+Verification: rendered the launcher masks offline (composite foreground over the background colour, then clip to a 72/108 circle and to a squircle) for old vs new at xxxhdpi. Old crops to the head; new shows the full scene and matches the iOS tile. The generated foregrounds measure `fill 0.720` where they previously measured `1.000`. Requires a rebuild to reach a device — launcher resources are compiled, so Fast Refresh cannot deliver this.
+
+Don't regress: an Android adaptive-icon foreground is NOT the iOS icon. It needs ~28% transparent padding; reusing the full-bleed artwork always reads as zoomed. Keep `expo.icon` and `adaptiveIcon.foregroundImage` as two different files.
+
+### 2026-08-27 — Create Zone color/icon grid: the aspect ratio was on the wrong node
+
+Side-by-side shots showed the Android colour swatches and icon tiles as portrait rounded rectangles where iOS has squares, which also made the 26pt glyphs read small inside their tiles.
+
+iOS is `LazyVGrid(columns: 6 x GridItem(.flexible(), spacing: 9), spacing: 9)` with every item `.aspectRatio(1, contentMode: .fit)` — six 45x45 squares, the 9-unit gutters falling only BETWEEN columns ((315 - 5x9)/6 = 45 inside the card's 315 of content width).
+
+The port had `aspectRatio: 1` on the **cell** plus `paddingHorizontal: s(4.5)`, with the swatch/tile as `flex: 1` inside. The padding took 9 off the width and nothing off the height, so each item rendered **43.5 wide x 52.5 tall** — a 9-unit portrait stretch, and 1.5 narrower than iOS as well because the outer half-gutters were being charged against the row.
+
+Fixed by moving the aspect ratio onto the item (`swatch`/`iconTile`) and giving the grid `marginHorizontal: -s(4.5)` so the gutters land only between columns. Verified arithmetically: the item now measures exactly **45.0**, matching iOS, against the old 43.5x52.5. Everything else in the two cards was already correct — radius 16 on swatches, 14 on tiles, 1pt border / 1.5 purple when selected, 26pt untinted glyphs, the 20pt white+appText check on colours and 20pt purple+appBackground check on icons.
+
+Checked the other percentage grids for the same shape: `ProfileSheets.gridCell` has no aspect ratio and centres fixed-size avatars, and `AddChoreSheets.photoCell` already carries its aspect ratio on the item. No other instances.
+
+Verification: `npm run typecheck` passes; geometry derived from `CreateZoneView.swift` and confirmed by arithmetic. Not device-verified — the phone is off ADB.
+
+Don't regress: in a wrapped percentage grid, `aspectRatio` belongs on the ITEM, never on a cell that also carries horizontal padding — the padding shrinks width only and the square becomes a portrait rectangle. Cancel the outer half-gutters with a negative margin on the grid so N columns get N-1 gaps like SwiftUI's `GridItem` spacing.
+
+### 2026-08-27 — Bottom fades grow by the navigation-bar lift
+
+The Create Zone gradient was already present at iOS's exact `183.5` (`CreateZoneView.swift:110`) — the reported 140 belongs to a different screen. The real defect is a knock-on of the safe-area sweep: the fade is anchored to the WINDOW bottom, but every Android bottom CTA is lifted by `Math.max(s(iOSValue), insets.bottom + margin)`. So the button rises while the gradient does not, and the fade reaches less far above it than on iOS.
+
+Measured on a 48dp three-button bar (`s(v) == v` at 375dp width):
+
+| Screen | iOS fade reaches above CTA | Android before | after |
+|---|---|---|---|
+| CreateZone | 143.5 | 119.5 | 143.5 |
+| ChoreDetail | 164.0 | 124.0 | 164.0 |
+| AddChore | 164.0 | 124.0 | 164.0 |
+| Members (x2) | 164.0 | 124.0 | 164.0 |
+
+`BottomFade` gained an `extra` prop — RAW dp, added after the scaled design height — and each call site passes the amount its own CTA was lifted (`ctaBottom - s(iOSDesignOffset)`, floored at 0). `ChoreDetailView` and `AddChoreView` use a raw `LinearGradient` rather than `BottomFade`, so they apply the same term inline. On a gesture-nav device the extra is 0 and the layout stays byte-identical to iOS.
+
+Deliberately NOT changed: `ZoneDetailView` and `AssignMemberSheet` pair a short fade (60) with a SOLID `colors.background` block whose padding already absorbs the inset, so their gradient-to-button distance never changed. `HomeView`'s fade sits behind the tab bar, which handles its own inset and is not a lifted CTA.
+
+Verification: `npm run typecheck` passes; the table above is computed, not eyeballed. Not device-verified — the phone is on ADB but dozing behind the keyguard.
+
+Don't regress: a window-anchored bottom fade must grow by whatever its CTA was lifted, or the two drift apart on devices with a navigation bar. Pair every `insets.bottom` CTA lift with the matching fade `extra`.
+
+### 2026-08-31 — Sign-in and launch loaders: in-button spinner, and the splash was rendering as a 2.6x crop
+
+Reported with three screenshots: Android showed a blank pink page with a speck of a loader after Google sign-in, where iOS shows (a) the spinner INSIDE the Google button while the flow runs and (b) the splash artwork with a spinner while the household loads. Three separate causes.
+
+**1. Android had no in-button loading state at all.** iOS `AuthManager` publishes `loadingProvider`, and `SignInView` reads it: the label and the Google mark go to opacity 0, a `ProgressView().tint(.black)` appears centred in the pill, and the button is disabled — the screen itself never changes. Android's `AuthValue` only had `loading`, which covers the initial `onAuthStateChanged` and stays false during an interactive sign-in, so pressing the button gave zero feedback until `signInWithCredential` resolved and the gate jumped to `LoadingScreen`. Added `loadingProvider: 'google' | null` (set at the top of `signInGoogle`, cleared in `finally`, mirroring iOS's `defer`), plus the success haptic iOS fires (`HapticManager.notification(.success)`), and `App.tsx` passes `loading={auth.loadingProvider === 'google'}`. Also ported the two bits of `SignInView.swift` that were missing: the 301-tall `appPurple` 0.2 → 0 wash from the top edge, and `ScaleButtonStyle` (`PressScale`) on the button. The background is now `resizeMode="stretch"` because iOS is `.resizable()` with no aspect ratio.
+
+**2. The splash on `LoadingScreen` was the Fabric intrinsic-size bug — fourth occurrence.** `Splash_screen.png` is 1125x2436 with no `@3x` suffix and was sized only by `StyleSheet.absoluteFill`, so Fabric fell back to 1125x2436 **dp** and drew a ~2.6x magnified crop of the artwork's top-left corner at density 2.5. Confirmed from the screenshot rather than assumed: the yellow sparkle, the small pink sparkle and the bottom-left heart all sit at exactly 2.55-2.6x their asset positions measured from the top-left, and the icon/wordmark (asset centre) lands off-screen right and below — which is why the page read as blank pink. Fixed with explicit `width: '100%', height: '100%'`. Swept the repo for the same shape and found one more: `NotificationPermissionView`'s `appBg` (also 1125x2436) had it too.
+
+**3. `ActivityIndicator` is the wrong loader here, and rendered a few pixels wide.** In the report's screenshot the spinner measures ~5dp against the 36dp box `size="large"` gives it; the mechanism was never identified. It is also the wrong shape — RN's Android `ActivityIndicator` is a Material `ProgressBar` arc, while every iOS loader in this app is `ProgressView(.circular)`. New `components/Spinner.tsx` draws the iOS indicator directly: eight rounded spokes on `UIActivityIndicatorView` geometry (length 0.30 of the frame, width 0.09, tips at the frame edge, opacity fading around the ring), rotated by a single native-driven transform. Sizes are explicit, so it cannot collapse. Converted all seven call sites — `LoadingScreen`, the new sign-in button, `PaywallView`'s CTA, `AddChoreView`'s save, `GiftBanner`, and the three household footers — which is exactly the set where iOS uses `ProgressView`; no `ActivityIndicator` remains in `src/`.
+
+Verification: `npm run typecheck` passes. NOT device-verified — the moto g35 is attached with Metro running on 8081 (`expo run:android`), but it sits on its PIN keyguard and Android kills the app process while the screen is locked, so the flow could not be exercised. Unlocking it delivers all of this over Fast Refresh; check the button loader first, then the splash after sign-in.
+
+Don't regress: the sign-in screen owns its own progress indicator — never route an interactive sign-in through the full-screen `LoadingScreen`. Loaders go through `Spinner`, not `ActivityIndicator`. And a full-screen `AppImage` needs explicit width/height; `StyleSheet.absoluteFill` alone gives it the file's pixel dimensions as dp.
+
+### 2026-08-31 — Launcher quick actions ported (iOS `QuickActionManager`)
+
+The last unported helper. iOS puts two retention affordances in the home-screen
+long-press menu — the same gesture that reaches Uninstall — and the user asked for
+the Arbora treatment here:
+
+| iOS | Android |
+|---|---|
+| `"Wait! Don't go yet"` / `"Unlock a special offer just for you"`, `.love` icon, free users only | `"Unlock your special offer"`, `ic_shortcut_gift` |
+| `"Help us improve"` / `"Tell us what went wrong, let's fix it"`, `.mail` icon | `"Tell us what went wrong"`, `ic_shortcut_help` |
+
+- `src/services/QuickActions.ts` (port of `QuickActionManager`) + `src/hooks/useQuickActions.ts` (port of `ContentView.processQuickAction` / `openHelpImprove`), on `expo-quick-actions` 6.0.2. Structure follows Arbora's proven implementation; copy and behaviour follow ChoreBuddy's iOS.
+- **Android shows ONE line, so the title carries the payload.** `ExpoQuickActionsModule.kt` builds every shortcut `setShortLabel(title).setLongLabel(title)` — there is no third label and `subtitle` is iOS-only. A single visible line reading "Wait! Don't go yet" never states the offer, so the titles are the Arbora strings the user pointed at (25 and 23 chars, inside the ~25-char long-label budget), with iOS's own strings kept as `subtitle` so an iOS build of this code still renders two lines.
+- Shortcuts are DYNAMIC, not `res/xml/shortcuts.xml`: the gift entry must not exist for a subscriber, and entitlement is only known at runtime. `syncQuickActions(hasPro)` replaces the set wholesale, mirroring iOS assigning `shortcutItems` on every `hasPro` change.
+- **Re-synced on every return to the foreground, and that is load-bearing.** The module builds each shortcut's intent as `Intent(context, currentActivity!!::class.java)`, so a sync with no live activity throws — which is precisely what happened when I started the process with the screen locked (the app ran, `dumpsys shortcut` listed Arbora but not ChoreBuddy). Without the foreground re-sync the menu stays stale until the next relaunch.
+- Icons: iOS asks UIKit for `.love` / `.mail`, and the catalog has neither a heart nor an envelope, so `plugins/withQuickActionIcons.js` writes those two standard glyphs as VectorDrawables in `colors.purple` with a lifted `drawable-night` variant — a shortcut icon is drawn by the LAUNCHER, in its own context, so it follows the system theme and not the app's forced light mode. `expo-quick-actions` resolves an icon by resource NAME (`getIdentifier(...)` → `Icon.createWithResource`), so the 42 SVG components are unusable here. Written both through the plugin and directly into `android/app/src/main/res/` for the same reason as `withLaunchScreenFill`: `android/` is gitignored and prebuild would wipe hand-written files, but running prebuild today would wipe the release signing block.
+- Routing lives in `App.tsx`'s `Gate` because both handlers need app state. The gift entry presents `GiftPaywallView isPermanentOffer` as an OVERLAY above `gateContent()` rather than as another gate branch — iOS uses a `fullScreenCover`, and a branch would unmount the navigator underneath. `isPermanentOffer` is new on the RN screen and matches iOS: the countdown card goes to `opacity: 0` (not removed) so nothing below it shifts. Guarded exactly like iOS: `if (purchases.hasPro || giftGateShowing) return`.
+- The mail entry reuses the existing `AppConstant.supportMailto('Help Us Improve', uid)` — same subject/body shape as iOS and as Settings → Contact Us, to `uttamchandsancheti.apps@gmail.com` (confirmed identical to iOS `AppConstant.supportEmail`). Cold-launch handling waits for `app.hydrated && !auth.loading`: iOS reads `Auth.auth().currentUser` synchronously so its subject always carries a uid, while Android's `onAuthStateChanged` is async and would otherwise mail `Help Us Improve - ChoreBuddy V 1.0.0 - -`.
+- `QA.initial` keeps returning the launch action for the whole session, so it is consumed behind a one-shot ref — otherwise a later re-render re-presents the paywall over itself.
+
+Verification: `npm run typecheck` passes; `:app:assembleDebug` succeeds (703 tasks, 22s) and the installed APK contains `expo.modules.quickactions` (50 refs in classes2.dex) plus all four `ic_shortcut_*` drawables in `res/drawable` and `res/drawable-night`. NOT functionally verified — the phone is on its PIN keyguard, and as described above that is the one state where publishing cannot work, so `dumpsys shortcut` still shows no entry for the package. Once it is unlocked: bring the app to the foreground, then `adb shell dumpsys shortcut | grep -A20 chores.tracker.chorebuddy` should list both ids, and long-pressing the icon should show the two rows with their glyphs.
+
+Adding a native module means the release AAB is stale: a `bundleRelease` (and a versionCode bump past Play's highest) is required before the next upload, or the shortcuts ship missing.
+
+Don't regress: quick-action titles are the single visible line on Android — don't swap them for the iOS titles, and don't lengthen them past ~25 chars. Keep the foreground re-sync. If either shortcut glyph changes, change it in `plugins/withQuickActionIcons.js` AND re-run its `writeIcons` into `android/`.
+
+### 2026-08-31 — Overview history card ran under the navigation bar
+
+Side-by-side shots of Overview showed the iOS card ending cleanly above the screen
+edge with both bottom corners visible, while Android's ran off the bottom.
+
+The card is not a fixed height on either platform — `OverviewView.swift` makes the
+`TabView` the flexible element of a `VStack` that `.ignoresSafeArea(.container,
+edges: .all)`, with `.padding(.bottom, 30)`, so it ends 30 above the physical
+screen edge (right about where an iPhone's home indicator sits). The RN port
+already had `flex: 1` + `marginBottom: s(30)` — token-correct — but Android's
+window includes the navigation-bar zone under edge-to-edge, and s(30) is ~34.6dp at
+this device's 432dp width against a 48dp three-button bar. So the last ~13dp of the
+card, including its rounded corners, rendered BEHIND the bar.
+
+Fixed with the standard pattern: `Math.max(s(30), insets.bottom + s(12))`, applied
+inline so the iOS offset still wins on a gesture-nav device with no inset. Swept the
+repo for other `flex: 1` blocks carrying their own bottom margin — this was the only
+one; every other bottom-anchored element already uses the pattern.
+
+Verification: `npm run typecheck` passes; the overlap is arithmetic (34.6dp margin
+vs a 48dp bar) rather than eyeballed. Not device-verified — the phone is back on its
+PIN keyguard with the app not running.
+
+Don't regress: a `flex: 1` card that must show its own bottom edge needs the safe-area
+lift exactly like a bottom CTA does; a bare `marginBottom: s(iOSValue)` is measured
+from the window edge, not from above the navigation bar.
+
+### 2026-08-31 — Chore photos: multi-select up to 10, matching iOS `PhotosPicker`
+
+The Add Photos entry point could only ever add ONE photo per tap, and cropped it to
+a square on the way in. iOS opens
+`PhotosPicker(selection: $photoItems, maxSelectionCount: 10, matching: .images)`
+from both `AddChoreView` and `ChoreDetailView` — a multi-select picker with no
+cropping stage.
+
+Cause: both RN screens called `pickAvatarPhoto(false)`, which is the PROFILE picker
+— iOS `PhotoPickers.swift` sets `config.selectionLimit = 1` there, and the RN
+version accordingly passes `allowsEditing: true, aspect: [1, 1]`. Right function,
+wrong screen. (`allowsEditing` is also mutually exclusive with
+`allowsMultipleSelection` in expo-image-picker, so the crop had to go regardless.)
+
+- New `pickChorePhotos(limit)` in `components/AvatarView.tsx` alongside the existing
+  encoder: `allowsMultipleSelection: true` with `selectionLimit` set to the REMAINING
+  budget under the new `MAX_CHORE_PHOTOS = 10`, so the system picker enforces the cap
+  itself instead of the app discarding the overflow after the user picked it. Every
+  asset still goes through `encodeAvatarPhoto` (512px long edge, ≤300KB), which is
+  what keeps each `chores/{id}/photos/{index}` document under Firestore's 1MB limit.
+  The permission alert moved into a shared `accessDeniedAlert` so both pickers keep
+  iOS's exact copy.
+- Both screens now append the picked batch under the 10 cap. **Deliberate divergence
+  on Add Chore:** iOS's `loadPhotos()` there REPLACES the list (`photoImages = images`),
+  which is only safe because SwiftUI's PhotosPicker retains its `selection` binding —
+  reopening it shows the earlier picks still ticked. Android's system picker starts
+  empty every time, so replacing would silently drop everything added on an earlier
+  trip. iOS's Edit screen appends (de-duplicated) anyway, so appending is the
+  behaviour that matches on both.
+- Unchanged, because they already match iOS: the strip shows `prefix(3)` thumbs with
+  the add tile only while `count < 3`, "View All" opens `PhotosSheet`, and the camera
+  is deliberately absent (iOS offers the library only for chore photos).
+
+Verification: `npm run typecheck` passes. Not device-verified — the phone is on its
+PIN keyguard with the app not running.
+
+Don't regress: chore photos go through `pickChorePhotos`, profile photos through
+`pickAvatarPhoto` — they are different iOS pickers (limit 10 vs 1, no crop vs square
+crop). Never point a chore-photo call site at the avatar picker again.
+
+### 2026-08-31 — Photo upload box audited against iOS; the add tile's plus was invisible
+
+The user put iOS's empty "Upload Images" box next to Android's add tile and asked for
+the purple square, plus icon and background to match.
+
+**The upload box was already token-exact.** Checked every value in
+`uploadBoxLabel` (both `AddChoreView.swift` and `ChoreDetailView.swift`): 90x90 box,
+radius 12, `appBackground` fill, 1pt dashed `appText` 0.2 border, a 28x28 radius-7
+square at `appPurple` 0.12, the 20x20 `plusIcon` over it, 6 gap, and "Upload Images"
+in regular 11 at `appText` 0.5. The RN styles carried all of it. The only real delta
+was the standing Android font-padding rule: `AddChoreView`'s `uploadLabel` had no
+`lineHeight`, so its 11pt line box ran ~4dp tall and pushed the content low inside the
+fixed 90x90 frame (`ChoreDetailView`'s copy already had it). Pinned to 13.1 +
+`includeFontPadding: false`.
+
+**The two screenshots were showing different STATES** — iOS with no photos (the upload
+box) against Android with one photo (the add tile) — and iOS's `addThumbLabel` is
+genuinely just the bare `plusIcon` on `appBackground`, no square and no label. But
+`plusIcon.png` is pure WHITE (it is drawn for purple buttons; both iOS imagesets,
+NavBar and Common, are 100% white pixels), and white against #FBF7FD differs by
+(4,8,2)/255 — so on iOS that tile is an empty-looking dashed box too. Against the 12%
+purple square the same plus differs by (16,24,5), which is what makes it read in the
+upload box.
+
+So the add tile now carries that same 28x28 purple square behind the plus, in both
+screens. **This is a deliberate deviation from the iOS source, made on the user's
+request**, and it is commented as such at both call sites — everything else about the
+tile (90x90, radius 12, dashed border, 20x20 plus, the `count < 3` rule) stays iOS-exact.
+
+Known unfixable difference: iOS specifies `StrokeStyle(dash: [4])`; RN's
+`borderStyle: 'dashed'` gives no control over dash length on Android, so the dash
+rhythm differs slightly. Matching it would mean drawing the border in SVG.
+
+Verification: `npm run typecheck` passes; the contrast figures above are computed from
+the actual asset pixels and the palette, not eyeballed. Not device-verified — the phone
+is on its PIN keyguard.
+
+Don't regress: `plusIcon` is a WHITE asset — never place it on a light fill without the
+purple square behind it (or a tint). The add tile's purple square is intentional and is
+not to be "corrected" back to the iOS bare plus.
+
+### 2026-08-31 — Reminder sheet's Done button fell off the bottom (Android font padding, 5th occurrence)
+
+Reported as the sheet "ignoring safe area". It was not a missing inset — `BottomSheet`'s
+card already carries `paddingBottom: insets.bottom` and this footer is a flow child, so
+it inherits it. The content was simply TALLER than the card, and because the card is
+`overflow: hidden` and bottom-anchored to the window, the surplus pushed the Done button
+off the bottom of the screen.
+
+Measured the cause off the screenshot rather than guessing: the option rows render at a
+**93.5dp pitch** where iOS's tokens predict 69dp (`.padding(.vertical, 12)` around a
+`VStack(spacing: 4)` of a 15pt medium title and a 12pt regular subtitle). Every token in
+`optionRow`/`optionTitle`/`optionSubtitle` already matched `ReminderSheet.swift` — but
+neither Text pinned its line box, and at these sizes Android's default
+`includeFontPadding` adds ~12dp per Text. Five rows x ~24dp = ~120dp of invented height,
+which is what pushed the footer out.
+
+- Pinned `lineHeight` (fontSize x 1.193, the real SF Pro Rounded line box) plus
+  `includeFontPadding: false` on `optionTitle` (17.9), `optionSubtitle` (14.3),
+  `fieldLabel` (14.3) and `fieldValue` (16.7). Recomputed tally: rows return to exactly
+  iOS's 60.2 design units (69dp) and the sheet's content lands at ~701dp against ~701dp
+  of usable card height.
+- That is too tight to rely on, so the options list is now a `ScrollView` with
+  `flexShrink: 1`. RN defaults `flexShrink` to 0, which is why the overflow propagated
+  instead of being absorbed; with it, the list keeps iOS's natural height whenever it
+  fits and gains a scroll only when it cannot — so the Done button stays reachable on any
+  screen height or system font scale. iOS needs none of this because its card is ~48dp
+  taller in usable terms (no navigation-bar padding) and its `Spacer` soaks up the slack.
+
+Checked the sibling sheets for the same shape: `CalendarSheet`, `TimeSheet` and
+`MonthDaySheet` size their content from fixed-size day boxes and a fixed wheel, so their
+Texts sit inside explicit frames and cannot inflate the column; `ChangeZoneSheet` and
+`AssignMemberSheet` already scroll. The Reminder sheet was the only flow-layout list.
+
+Verification: `npm run typecheck` passes; the 93.5dp row pitch is measured from the
+reported screenshot and the corrected tally is arithmetic. Not device-verified — the phone
+is on its PIN keyguard.
+
+Don't regress: this is the fifth instance of the same root cause — ANY Text in an
+iOS-derived layout needs `lineHeight` + `includeFontPadding: false`, and it matters most
+inside a height-capped sheet, where the invented height does not just look wrong, it
+pushes the CTA off screen. A list inside a fixed-height sheet card needs `flexShrink: 1`
+too; RN's default of 0 makes overflow propagate rather than compress.
+
+### 2026-08-31 — Assign Task sheet's Done sat 114dp up: the safe-area inset was counted twice
+
+Reported as too much padding under the Done button. It was, by exactly one navigation
+bar: the button's bottom edge was **114dp** above the window edge where the app-wide
+convention is 66dp (a 48dp three-button bar plus s(16)).
+
+Settled the mechanism in Yoga's source rather than guessing, because the 2026-08-27
+entry and this symptom pointed opposite ways. In `AbsoluteLayout.cpp`'s
+`positionAbsoluteChild`, the branch taken when an inset IS defined computes
+`parentHeight - childHeight - borderEnd - marginEnd - bottom` — padding is never
+subtracted. So `bottom: 0` measures from the parent's BORDER box, and what matters is
+WHICH parent:
+
+- `ChangeZoneSheet`'s footer is a direct child of the sheet card, whose border box is
+  the window edge, so it must carry the whole offset itself. Correct as it was.
+- `AssignMemberSheet`'s footer lives inside the `flex: 1` horizontal pager page — a
+  flow child of the card — so it had already been lifted by the card's
+  `paddingBottom: insets.bottom` (2026-08-26). Adding `insets.bottom + s(16)` on top
+  double-counted the bar: 48 + 66 = 114dp.
+
+Both call sites now go through `ctaPadBottom(insets.bottom, liftedByCard)`, which
+returns `Math.max(s(30) - inset, s(16))` for the nested case and the usual
+`Math.max(s(30), inset + s(16))` for a direct child — so both land at 66dp above the
+window on a bar device and at iOS's bare s(30) on a gesture-nav device.
+
+Checked the other absolute sheet footers for the same nesting: `ScheduleSheets`'
+`bottomBar` is a direct child of the card (correct), and `StatsFilterSheet`'s two
+footers bypass `BottomSheet` entirely so no card padding exists there (correct).
+
+Verification: `npm run typecheck` passes; the 114 → 66dp figures are computed from the
+styles and the device's 48dp bar, and the padding rule is read out of Yoga's source.
+Not device-verified — the phone is on its PIN keyguard.
+
+Don't regress: `bottom: 0` inside `BottomSheet` measures from the WINDOW, but only for
+a DIRECT child of the card — a footer nested inside any flow child has already been
+lifted by the card's padding. Use `ctaPadBottom` rather than repeating the
+`Math.max(...)` inline, and check the nesting before choosing the flag.
+
+### 2026-08-31 — Camera / Gallery glyphs redrawn to the real SF Symbols geometry
+
+iOS's `SelectOptionSheet` draws these with
+`Image(systemName: "camera.fill" / "photo.fill").font(.system(size: 30))`. SF Symbols
+are Apple artwork and cannot ship on Android, so the port hand-traced them — but the
+traces were drawn edge-to-edge in a 30x30 box with radius-2 corners, which is why they
+read as blockier, squarer and heavier than iOS's.
+
+Measured the real symbols instead of guessing at them: rendered both with
+`NSImage(systemSymbolName:)` at 120pt on this Mac, then took row-by-row alpha scans and
+divided by 4 to get iOS's 30pt numbers. **No Apple artwork is bundled** — the renders
+were reference only, and are gone with the scratchpad.
+
+    camera.fill  ink 36.0 x 28.0 in a 43.5 x 32 layout box
+                 body corner radius 3.8, top edge y 6.4
+                 viewfinder hump flares x 8.8..27.2, flat crest 14.6..21.2
+                 lens is a RING: outer r 7.9, core r 5.7, centre (17.9, 15.6)
+                 flash dot centre (30.25, 9.4) r 1.75
+    photo.fill   ink 34.8 x 27.0 in a 42.25 x 31 layout box
+                 frame corner radius 4.0
+                 sun centre (11.1, 10.0) r 3.5
+                 landscape x 2.5..32.0, base band bottom y 24.4, its bottom
+                 corners rounded r 2
+
+Both Svgs now carry the ~2-unit vertical bearing the symbol images have, so the
+`VStack(spacing: 12)` gap to the label matches iOS as well. Knockouts fill with
+`colors.white` — the option card's own fill — since `react-native-svg` cannot erase.
+
+Verification: rendered the finished components' own paths in WebKit side by side with
+the reference PNGs (a throwaway HTML page driven from the component source, so the
+comparison used the shipped `d` attributes, not a copy). Silhouettes, lens ring, hump
+crest, corner radii and the rounded base band all line up; the largest remaining
+deviation is a fraction of a design unit on the hump shoulders. `npm run typecheck`
+passes. Not device-verified, but the glyphs are resolution-independent vectors and were
+checked at 6x.
+
+Don't regress: these are measured reproductions, not guesses — do not "simplify" the
+paths or re-square the corners. Never bundle a rendered SF Symbol; the geometry may be
+matched, the artwork may not be shipped.
+
+### 2026-08-31 — Add-member pill re-centred, and the keyboard Done bar made app-wide
+
+Two reports from the Edit Chore screen.
+
+**1. "Add member" label off centre.** iOS has TWO different pills and the port had
+crossed them. `AddChoreView.swift`'s is the split design — label, a 1pt divider, then a
+25-wide `appBackground` compartment holding the chevron — and the RN copy of that one is
+correct. `ChoreDetailView.swift`'s is the plain capsule:
+`HStack(spacing: 6) { Text 12pt, chevron 5x9 }` with `.padding(.horizontal, 10)`, i.e.
+EQUAL side paddings. The RN version had inherited a 16-wide chevron compartment from the
+other pill, so its paddings were 10 left and (16-5)/2 = 5.5 right — the label sat 4.5
+units left of centre. Now `paddingHorizontal: s(10)` + `gap: s(6)` with the chevron
+wrapper cut to the glyph's own 5x9. The wrapper stays (2026-08-27: a bare `Svg` sibling
+was the one unexplained variable when this pill truncated to "Add") — it is just no
+longer oversized.
+
+**2. No Done button above the keyboard on the notes field.** `KeyboardDoneBar` was
+rendered inside `BottomSheet`, so only sheet text fields had it. iOS has it over EVERY
+field in the app: `SceneDelegate` sets
+`IQKeyboardManager.shared.enableAutoToolbar = true` (QuickActionManager.swift), which is
+global. Moved the bar to a single mount in `App.tsx`, rendered last in the root tree so
+it also paints above an open sheet, and removed the per-sheet copy. Every screen-level
+field — Chore Detail notes and rename, Add Chore's notes/sub-tasks/custom name, Create
+Zone, the household setup fields, Members search — now gets it for free, and there is
+exactly one instance so two bars can never stack.
+
+Verification: `npm run typecheck` passes; the pill's 10/5.5 asymmetry is arithmetic from
+the styles, and the single mount was checked by grep. Not device-verified — the phone is
+on its PIN keyguard.
+
+**Follow-up, same day — that centring change broke the label again.** Re-centring by
+moving the offsets onto the pill (`paddingHorizontal: s(10)` + `gap: s(6)`) reintroduced
+the 2026-08-27 truncation from the other end: the row then painted only "member", where
+the original defect painted only "Add". The 2026-08-27 entry had already recorded that the
+padding-on-CHILDREN shape is the one that renders the full string and that the mechanism
+was never identified — so reshaping the row was the mistake, not the padding values.
+
+Restored that shape and rebalanced within it: the label keeps `paddingLeft: s(10)` and the
+chevron's box carries `paddingLeft: s(6)` + `paddingRight: s(10)`. Total geometry is
+identical to iOS — 10 either side, 6 between label and glyph — with no container padding
+and no `gap`.
+
+Don't regress: the two "Add member" pills are DIFFERENT iOS designs — Add Chore's is
+split with a divider, Chore Detail's is a plain capsule with symmetric padding; do not
+unify them. Chore Detail's pill has now truncated on device TWICE when reshaped; keep the
+offsets on its children and leave the row's structure alone. `KeyboardDoneBar` is mounted
+once at the root — never re-add it to `BottomSheet` or any screen.
+
+### 2026-08-31 — Member profile's last chore card sat under the navigation bar
+
+Same mechanism as the Overview card earlier today, one level down: `ProfileDetailView.swift`
+puts `.padding(.bottom, 40)` on its ScrollView content, and only the BACKGROUND carries
+`.ignoresSafeArea` — so on iOS that 40 sits above the home indicator. Android's scroll
+spans the whole window, so s(40) (~46dp) was the entire gap between the last chore card
+and a 48dp three-button bar, leaving the card flush with it.
+
+`MemberDetailView`'s scroll now pads `s(40) + insets.bottom`. Swept every vertical page
+scroll for the same shape while in there:
+
+| scroll | pad | clears | verdict |
+|---|---|---|---|
+| MemberDetail | s(40) → +inset | nav bar | **fixed** |
+| Settings | s(60) → +inset | nav bar | fixed (was 21dp, iOS gives 60 above the indicator) |
+| Members list / EditProfile | s(140)/s(160) → +inset | bottom CTA | fixed for consistency |
+| Home s(260), Zone/Chart/Stats s(140) | 161–300dp | tab bar top at ~131dp | already fine |
+| CreateZone s(150), ZoneDetail s(150), AddChore s(140) | 161–173dp | CTA top at ~126dp | already fine |
+
+Verification: `npm run typecheck` passes; the clearances in that table are computed from
+the styles against this device's 48dp bar. Not device-verified — the phone is on its PIN
+keyguard.
+
+Don't regress: iOS ScrollViews here respect the safe area even when the background does
+not, so an iOS `.padding(.bottom, N)` becomes `s(N) + insets.bottom` on Android whenever
+the scroll reaches the window edge. Screens whose scroll only has to clear a floating tab
+bar or CTA already budget for it and need no inset.
+
+### 2026-08-31 — Pushed-screen headers had no height, so scrolled cards slid under the buttons
+
+Reported as "no spacing at the top when scrolling" on Edit Chore / Chore Details. The
+content was not merely close to the header — it was passing BEHIND the 40pt circle
+buttons, which is why the header appeared to sit on the card's white surface.
+
+iOS's header is a `ZStack { title, HStack of circleButton }` inside
+`VStack(spacing: 0) { header.padding(.top, 59); ScrollView }`, so the row's height is its
+tallest child — the 40pt buttons — and the ScrollView starts at exactly 59 + 40 = 99.
+
+The RN headers had NO explicit height, so each row was only as tall as its title's line
+box (22 x 1.193 = 26.2 units). Two consequences: the scroll began ~14 units too high, and
+the `headerButtons` row — absolutely positioned and vertically centred — overhung the
+scroll's top edge by (40 - 26.2)/2 = 6.9 units (~8dp), so scrolled content ran underneath
+it instead of clipping cleanly below the header.
+
+Added iOS's row height to the five screens that were missing it: `ChoreDetailView` and
+`AddChoreView` (`height: s(40)`, since their `headerWrap` carries the 59), and
+`CreateZoneView`, `OverviewView` and `ChoreStatusView` (`height: s(99)`, or s(80) on the
+small-phone variant, since the 59/40 top pad lives on the header itself — RN heights are
+border-box, so this is the same 40 of content). `MembersView` and `SettingsView` already
+did exactly this with `height: s(99)`, which is how the correct value was confirmed.
+
+Verification: `npm run typecheck` passes; the 26.2-vs-40 arithmetic comes from the styles
+and matches the screenshot, where the header buttons are painted over the card. Not
+device-verified — the phone is on its PIN keyguard.
+
+Don't regress: a header whose buttons are absolutely positioned MUST carry iOS's row
+height (40, plus the top pad when that pad is on the same view). Without it the row
+collapses to the title's line box and every absolutely-placed child overhangs whatever
+follows.
+
+### 2026-08-31 — Sheet footers were double-padded: the card's inset plus their own iOS offset
+
+Reported on the Reminder sheet: far more space under Done than iOS. The measurement:
+iOS's footer is `.padding(.bottom, 55)`, which is ~63dp here, while Android was rendering
+**111dp** — the footer's own s(55) *plus* the card's `paddingBottom: insets.bottom`
+(2026-08-26), which a flow child inherits. Every flow footer in every sheet had the same
+double count:
+
+| iOS design offset | Android before | after | iOS equivalent |
+|---|---|---|---|
+| 55 | 111dp | 66dp | 63dp |
+| 40 | 94dp | 66dp | 46dp |
+| 30 | 83dp | 66dp | 35dp |
+
+New `sheetFooterPad(design, bottomInset)` in `BottomSheet.tsx` returns
+`Math.max(s(design) - bottomInset, s(16))`, so the TOTAL from the window edge is
+`Math.max(s(design), bottomInset + s(16))` — the same rule every bottom CTA in the app
+follows, within ~3dp of iOS on a three-button bar and exactly iOS's value on a
+gesture-nav device with no inset. Applied at all 12 flow-footer sites: `AddChoreSheets`
+(`footer` x3, `footerTall`, `photoGrid`, `createFooter`), `ProfileSheets` (`optionRow`,
+`formFooter`), `ScheduleSheets` (`downloadFooter`, `memberSheetContent`, `snoozeFooter`)
+and `ChoreStatusView`'s `sheetFooter`.
+
+Note the three design values now collapse to the same 66dp on a bar device. That is
+inherent, not a bug: iOS's 30 and 40 offsets sit partly INSIDE the home-indicator zone,
+which has no Android equivalent — the bar is opaque and cannot be drawn under.
+
+The card keeps its blanket inset on purpose: a future sheet that forgets the helper is
+then merely over-padded rather than putting its CTA behind the navigation bar.
+
+Verification: `npm run typecheck` passes; the table is computed from the styles against
+this device's 48dp bar, and the reported 111dp matches the screenshot. Checked that no
+component ended up with a duplicate `useSafeAreaInsets()` after the sweep. Not
+device-verified — the phone is off ADB.
+
+Don't regress: a flow footer inside `BottomSheet` must use `sheetFooterPad`, never a bare
+`s(design)` (double-pads) and never the `Math.max(s(design), inset + s(16))` form used for
+window-anchored CTAs (also double-pads, since the card already added the inset).
+Absolutely-positioned sheet footers are the separate case — they use `ctaPadBottom`.
+
+### 2026-08-31 — Assign Task sheet: ticks are now a draft, committed only by Done
+
+The user reported that ticking members and dismissing the sheet without pressing Done
+still changed the chore's assignment. It did: `onToggle` wrote straight into the parent's
+`assigned` state on every tap, and in `ChoreDetailView` that also calls `markDirty()`, so
+`saveEditsIfNeeded` on unmount persisted the discarded selection to Firestore.
+
+`AssignMemberBody` now seeds a local `draft` from `selected` and every tick edits only
+that; Done commits with `close(() => onSave(picked))` — the same shape `ChangeZoneSheet`
+already used for its Done. ✕, the backdrop and drag-to-dismiss therefore discard. The API
+changed from `onToggle(id)` to `onSave(ids)`, updated at both call sites (`ChoreDetailView`
+and `AddChoreView`), so the parents can no longer be mutated a tick at a time.
+
+**Deliberate divergence from iOS, at the user's request.** iOS's `AssignMemberSheet` takes
+`@Binding var selected` and mutates it inside the row's action
+(`selected.removeAll` / `selected.append`), so on iOS a dismissed sheet DOES keep the
+change — its Done button only calls `animateClose()`. The requested behaviour is better and
+is what ships here; recording the difference so it is not "corrected" back later.
+
+Unchanged, matching iOS: creating a profile from page 2 commits immediately (it is a real
+household mutation, not part of the assignment), and a newly created member is NOT
+auto-ticked — iOS's `saveNewProfile` only returns to the list.
+
+Still live-committing, and NOT changed because the report was specific to assignment: the
+Calendar, Time, Month-day and Reminder sheets call `onPick`/`onTime`/`onNotify` as the user
+interacts, with Done only closing — same as iOS's bindings.
+
+Verification: `npm run typecheck` passes. Not device-verified — the phone is off ADB.
+
+Don't regress: the assign sheet's ticks are a draft. Do not reintroduce a per-tap callback,
+and remember `close(cb)` runs the callback after the dismiss animation, which is how the
+commit stays ordered behind the sheet closing.
+
+### 2026-08-31 — Keyboard auto-scroll ported to the four screens iOS implements it on
+
+The user asked where iOS scrolls a focused field into view and for the same on Android.
+
+**It is NOT IQKeyboardManager.** `SceneDelegate` sets
+`IQKeyboardManager.shared.isEnabled = false` and keeps only `enableAutoToolbar`
+(QuickActionManager.swift), so the scrolling is hand-written per screen. Grepping
+`ScrollViewReader` + `keyboardHeight` finds exactly four:
+
+| iOS screen | fields | keyboard padding |
+|---|---|---|
+| `JoinHouseholdView` | the invite-code field (`.id("codeField")`) | `.padding(.bottom, keyboardHeight)` on the header+scroll VStack |
+| `CreateHouseholdView` | household name, your name, every member row | `max(0, keyboardHeight - 80)` |
+| `AddChoreView` | More step's sub-task and note rows (reader at :1799 — the custom-name field on step 2 deliberately has none) | `.padding(.bottom, keyboardHeight)` |
+| `ChoreDetailView` | note and sub-task rows | `.padding(.bottom, keyboardHeight)` |
+
+Each runs the same thing on BOTH focus change and keyboard change:
+`asyncAfter(0.05) { withAnimation(.easeOut(0.25)) { proxy.scrollTo(field, anchor: .center) } }`.
+(`OnboardingUserSayView` also uses a `ScrollViewReader`, but for its testimonial
+carousel — nothing to do with the keyboard.)
+
+New `src/hooks/useKeyboardAutoScroll.ts` reproduces it. Android needs it for a different
+reason than iOS: the app is edge-to-edge, so the window is not resized when the keyboard
+opens and content simply ends up behind it.
+
+- The focused field comes from `TextInput.State.currentlyFocusedInput()` and is measured
+  with `measureInWindow`, so screens do NOT need iOS's per-field `.id(...)` plumbing —
+  each input just passes `onFocus={autoScroll.onFocus}`, and the ScrollView takes `ref`,
+  `onScroll`, `scrollEventThrottle` and adds `padBottom` to its content padding.
+- The visible region is `windowHeight - (keyboard + insets.bottom) - KEYBOARD_TOOLBAR_HEIGHT`:
+  `endCoordinates.height` under-reports by the bottom inset under edge-to-edge (same
+  correction `KeyboardDoneBar` applies), and the Done bar sits on top of the keyboard.
+- Deliberately one-directional: it only ever pulls a field UP. iOS's `anchor: .center`
+  can also scroll back down, which on Android fought the user during relayout.
+- Same 50ms delay before measuring, and `animated: true` for the 0.25s ease-out.
+
+Wired into all four screens, matching iOS's field set exactly. Screens iOS does NOT
+auto-scroll and which therefore were left alone: `MemberSelectView`, `EditProfileView`,
+the Members search, every sheet's text field, and Add Chore's step-2 name field.
+
+Verification: `npm run typecheck` passes (tsc parses the JSX, so the Join screen's new
+ScrollView is structurally sound). NOT device-verified — the phone is off ADB, and this
+is behavioural rather than arithmetic, so it does need a real check: focus the last
+sub-task on Add Chore's More step and the notes field on Chore Detail.
+
+**Follow-up, same day — the first pass overshot and hid the field.** Reported on the More
+step: the scroll jumped far too high and the field ended up behind the header. Two causes,
+both in the centring maths:
+
+1. It derived the keyboard's top edge as `Dimensions.get('window').height - (keyboard +
+   insets.bottom) - 42`. Those three values do not agree about which system-bar zones the
+   window includes under edge-to-edge, so the derived edge was too high. The hook now reads
+   `endCoordinates.screenY` from the keyboard event (new `useKeyboardTop`) — an absolute
+   coordinate that needs no correction.
+2. It centred the field in `[0, keyboardTop]`, i.e. the whole screen, where iOS's
+   `anchor: .center` centres within the SCROLL VIEW's frame. On this screen the scroll
+   starts ~200dp down, so every scroll was ~100dp too far, and a tall multiline notes box
+   ended up with its top above the scroll's frame — behind the header, exactly as reported.
+   The hook now measures the scroll's own frame (`getScrollableNode()` +
+   `measureInWindow`) and centres within `[frame.top, min(frame.bottom, keyboardTop - 42)]`,
+   with a hard clamp so the field's own top can never be pushed above `frame.top`.
+
+Verification: `npm run typecheck` passes; walked the arithmetic through this device's
+measurements from the report's screenshot (keyboard top ~573dp, scroll frame from ~200dp:
+a 90dp-tall notes field 470dp down now scrolls 150dp and lands at 320-410dp, well clear of
+the 531dp occlusion line). Still not device-verified.
+
+**Second follow-up — the overshoot fix killed the hook entirely.** Measuring the scroll's
+frame used `ScrollView.getScrollableNode()`, which returns a node HANDLE (`?number`,
+`ScrollView.js:853` → `findNodeHandle`), not a host instance — so it has no
+`measureInWindow`, the hardened guard resolved null, and the effect returned before
+scrolling anything. The measurable ref is `getNativeScrollRef()` (`() => HostInstance |
+null`). Verified both signatures in RN's own source rather than by trial.
+
+The guard that hid this is now a degradation instead of a dead end: with no frame the hook
+falls back to making the field merely VISIBLE (scroll by the overlap plus 16) rather than
+skipping the scroll, so a future API change can no longer silently disable the feature.
+
+Also confirmed from RN's Android source that `endCoordinates.screenY` really is emitted
+there (`ReactRootView.java:910-918, 1048-1057`) — the other candidate for "nothing
+happens", since the effect bails when `keyboardTop <= 0`.
+
+Don't regress: keyboard auto-scroll belongs to these four screens only — that is iOS's
+own scope, not an oversight. Screens must not use `KeyboardAvoidingView` for this on
+Android; it is a no-op there under edge-to-edge. Take the keyboard's top edge from
+`endCoordinates.screenY`, never from `windowHeight - height`; centre within the scroll's
+measured frame rather than the screen; and measure it through `getNativeScrollRef()`,
+never `getScrollableNode()`.
+
+### 2026-08-31 — Due-badge calendar rendered black instead of blue (hardcoded SVG fill, again)
+
+`zoneCalendarIcon.svg` bakes `fill="black"`, and the member profile's due badge used the
+raw asset — `<Images.zoneCalendarIcon width={s(14)} height={s(14)} />` — so no colour prop
+could reach it. iOS draws it as a template:
+`Image(.zoneCalendarIcon).renderingMode(.template).foregroundColor(DueState.today.accent)`
+(`ProfileDetailView.swift:573-581`), i.e. #3F81FF, the same blue as the "Today" label and
+the progress gradient beside it. Switched to the existing tintable `ZoneCalendarGlyph` at
+`colors.blue` (verified identical to `dueAccent.today`).
+
+Swept every remaining calendar-asset call site:
+- `StatsFilterSheet`'s range picker used the raw `choreCalendarIcon` inside an
+  `opacity: 0.7/0.3` wrapper. iOS tints it `appText` at those opacities, and the asset's
+  baked black is #000 against `appText`'s #1F1F1F — a real, if small, deviation. Now
+  `ChoreCalendarGlyph` with `colors.text` at B3/4D.
+- `OnboardingProgressView`'s `calendarGlyphIcon` is correct as-is: the asset is WHITE, and
+  iOS deliberately renders it without `renderingMode(.template)` — no tint on either side.
+- `calendarImg` in onboarding is illustration art, not a glyph.
+
+Every other calendar in the app was already going through `ZoneCalendarGlyph` /
+`ChoreCalendarGlyph` (Home, Zone, chore cards, schedule sheets, Add Chore, Chore Detail).
+
+Verification: `npm run typecheck` passes; the tint values are read from the iOS source and
+the asset fills were confirmed by grepping the SVGs. Not device-verified — the phone is off
+ADB.
+
+Don't regress: this is the third icon shipped from a hardcoded-fill asset where iOS uses a
+template (`zoneDownloadIcon` 2026-08-26, `logoutIcon` 2026-08-27, now `zoneCalendarIcon`).
+When iOS says `renderingMode(.template)`, the Android side MUST use the `glyphs.tsx`
+equivalent — a `color` prop on the raw asset component is silently ignored.
+
+### 2026-08-31 — Remote Config: one fetch per 24h, cached in between, refetched when the day rolls over
+
+Requested policy: fetch at most once per 24 hours, reuse the cached values, and refetch on
+app open if the calendar day changed. `PaywallConfig.ts` previously used
+`minimumFetchIntervalMillis: 3600000` (one hour) and fetched only once per mount, so it
+both fetched more often than wanted and never picked up a change without a relaunch.
+
+- `minimumFetchIntervalMillis` is now `DAY_MS` in release (still 0 in `__DEV__`). That is
+  what enforces the cap: inside the window `fetch()` resolves locally without touching the
+  network, and the SDK keeps the last activated values on disk — so `readConfig` returns
+  them on a cold start with no fetch at all. Cache reuse needs no code of our own.
+- The day-change refetch has to BYPASS that cap, because a day boundary can fall well
+  short of 24h since the last fetch (fetch at 23:50, open at 08:00). `rc.fetch(0)`
+  overrides the minimum interval for that one call; the normal path just calls `activate()`.
+- "When did we last fetch" comes from `rc.fetchTimeMillis` — the SDK's own persisted
+  timestamp of the last SUCCESSFUL fetch (`-1` on Android / `0` on iOS when there has never
+  been one), read after the awaited `setConfigSettings`/`setDefaults` calls, both of which
+  refresh it through `_promiseWithConstants`. No AsyncStorage bookkeeping, so nothing can
+  drift out of sync with the SDK's own throttle.
+- A fresh install still fetches immediately — otherwise the whole first session would run
+  on in-app defaults.
+- The check runs on mount AND on every `AppState` 'active', which is what makes "on app
+  open" work for a process that survives midnight. It only reaches the network when the day
+  actually changed, and `setConfig` is skipped when every value is unchanged so a
+  foreground sync cannot re-render the gate for nothing.
+- `readConfig` was factored out of the old inline object literal; the key list and the
+  `showForceUpdateAlert` derivation are unchanged.
+
+Verification: `npm run typecheck` passes; the day-boundary predicate was exercised over
+four cases (same day +2h/+23h → no fetch, next day +8h and +3 days → fetch). The RNFB
+semantics above were read out of `@react-native-firebase/remote-config/lib/index.js`
+(`fetchTimeMillis`, `_updateFromConstants`, `_promiseWithConstants`) rather than assumed.
+Not device-verified — the phone is off ADB.
+
+Don't regress: the 24h cap lives in `minimumFetchIntervalMillis`, and the day-change path
+MUST use `fetch(0)` to get past it — calling plain `fetch()`/`fetchAndActivate()` there
+would be silently throttled and the new day's values would never arrive. Keep reading the
+last-fetch time from `fetchTimeMillis`; a parallel timestamp in AsyncStorage can disagree
+with the SDK and cause either double fetches or none.
+
+### 2026-09-01 — Onboarding page-1 jerk: 278ms of empty page after the swipe landed
+
+The user sent a screen recording (`screen-20260901-104212.mp4`, 81 frames / 4.08s) of the
+swipe from the welcome page onto "Keep Your Home Organized". Measured it frame by frame
+(ffmpeg extract + an ink ratio over the page body) rather than eyeballing:
+
+| frame | t | content on the page |
+|---|---|---|
+| f009 | 1.008s | 7.0% — welcome art sliding out |
+| f011 | 1.074s | **0.1% — page landed, completely empty** |
+| f012 | 1.119s | 0.1% (the CTA label flips to "Continue" here) |
+| f013 | 1.352s | 0.9% — first pixels of the card |
+| f017 | 1.475s | 4.7% |
+
+So the pager lands at ~1.07s and nothing is on screen until 1.35s: **278ms of a blank
+page**, then everything pops in. That empty beat is the jerk. The frame timings agree —
+the recorder emits on change, and there is a 233ms gap with no frame at all right there.
+
+Cause: `PAGE_REVEAL_DELAY`. It was 180 → 300 → 200 across earlier passes, every value
+compensating for activation happening MID-DRAG (the page became `active` as soon as the
+scroll crossed the dead zone, so the delay held its art back until the pager had visually
+settled). Activation has been driven by `settled` — momentum end — since 2026-08-24, so
+the delay stopped deferring anything and became pure dead time. Set to 0: the 220ms fade
+now starts on the landing frame.
+
+Checked and cleared while in there: every animation on this page is native-driven
+(`parts.spring` passes `useNativeDriver: true`, the ring is Reanimated on the UI thread),
+and all seven pages are mounted up front with `PageReveal` only animating opacity, so the
+task-card bitmaps are already decoded before the reveal — no JS-thread or decode work in
+the reveal window.
+
+One thing NOT explained: f018 (t=1.540s) is a single fully-blank frame in the middle of
+the reveal, preceded by a 65ms inter-frame gap against a 34ms median — a dropped frame.
+The reveal resumes at f019 further along than it left off, so it is not the fade
+restarting (a restart would blank for a full cycle). Most likely the recorder captured a
+surface mid-hitch; no code path sets the page's opacity to 0 at that point. Worth
+re-checking on a fresh recording now that the dead beat is gone.
+
+Verification: `npm run typecheck` passes; the timing table above is measured from the
+user's own recording. Not re-recorded after the change — the phone is off ADB.
+
+Don't regress: `PAGE_REVEAL_DELAY` exists only as a hook for a future need; it must stay 0
+while activation is settle-driven. Re-adding a delay here re-adds a visible empty page
+after every swipe.
+
+Still divergent from iOS, and NOT changed here: iOS's `TabView` renders the incoming
+page's content while it slides, with the entrance animations firing on `.onAppear`, so
+there is no empty slide-in at all. Android reveals the page only once it has landed, so
+the incoming page slides in blank. Fixing that means driving `PageReveal`'s opacity from
+`scrollX` positionally (the same technique `copyFade` already uses in this file) instead
+of a timed fade — a bigger change to the exact mechanism that has regressed three times,
+so it needs its own pass.
+
+### 2026-09-01 — Gift banner flicker: Remote Config was EIGHT independent copies, not one manager
+
+Reported as the banner appearing with its countdown, then losing the countdown, then
+disappearing, on both Home and Settings — "state loading issue", and a request to check
+how iOS loads TimerManager / RemoteConfig.
+
+**iOS's structure is the answer.** `ChoreBuddyApp` creates ONE `@StateObject` per manager
+(`TimerManager`, `PurchaseManager`, `RemoteConfigManager`, …) and injects them with
+`.environmentObject`, so every view reads the same instance — and each of those managers
+has its state available synchronously at init (`UserDefaults` for the timer, the SDK's
+cached values for Remote Config, StoreKit entitlements). Its banner is therefore either
+there or not on the first frame.
+
+Android had `GiftTimer` and `PurchaseManager` as proper contexts, but `usePaywallConfig`
+was a plain hook: **eight call sites** (`App`'s gate, Settings, MainTabs, Zone, Zone
+Detail, Paywall, and both gift banners) each held their own `useState(defaults)` and
+settled independently. That is exactly the reported sequence — Settings' copy had already
+loaded `showLifeTimeBannerAtHome: false`, so it rendered the banner, while the banner's
+own copy was still on the default `true`, so it drew the countdown pill. As each copy
+settled they contradicted each other one at a time: pill goes, then the banner goes.
+
+- `PaywallConfig.ts` → `.tsx`, now a `PaywallConfigProvider` + context mounted once in
+  `App.tsx` beside the other managers. One instance, one fetch cycle, one AppState
+  listener (the per-instance listener added earlier today was quietly running eight times).
+- The sync is split: `primeRemoteConfig` is entirely LOCAL (settings, defaults, activate
+  what is on disk) so the real configuration is available almost immediately, and
+  `refreshRemoteConfig` is the only part that can touch the network, still under the 24h
+  cap with the day-change `fetch(0)` bypass.
+- Added `ready` to the config context AND to `GiftTimer` (false until the AsyncStorage
+  read resolves — before this `isExpired` reported `false`, the "offer is live" state, on
+  the first frame). `GiftBanner`/`HomeGiftBanner` render nothing until the RC flag, the
+  timer and `hasLoadedInitialStatus` are all known, so the banner draws once, in its final
+  state, instead of correcting itself twice.
+- The root gate also waits for `config.ready`: three of its branches (force update,
+  onboarding paywall, gift) are Remote Config decisions, and iOS makes them from
+  synchronously-cached values. `ready` flips in a `finally`, so a Remote Config failure
+  can never strand the app on the LoadingScreen.
+
+The visibility RULES were already correct and are unchanged — verified against the iOS
+source as a truth table over flag × expired × hasPro, all six rows matching
+`HomeView.swift:163`, `SettingsView.swift:43` and the pill's
+`.opacity(showLifeTimeBannerAtHome ? 1 : 0)`: Settings deliberately has NO timer check, so
+an expired countdown still shows the banner there, with the pill hidden rather than
+removed.
+
+Verification: `npm run typecheck` passes; the truth table was checked mechanically against
+the iOS conditions. Not device-verified — the phone is off ADB.
+
+Don't regress: app-wide managers belong in ONE provider, mirroring iOS's
+`@StateObject` + `.environmentObject` — never a bare hook with local state, or every call
+site gets its own asynchronously-settling copy. Anything whose visibility depends on
+Remote Config, the countdown or entitlement must wait for the matching `ready`/
+`hasLoadedInitialStatus` flag; iOS can render immediately because its three sources are
+synchronous, and Android's are not.
+
+### 2026-09-01 — Home showed its empty state for ~1s before the chores arrived
+
+Reported as: Home appears empty, then the data pops in — and the splash is already
+showing a loader, so that is where the wait belongs.
+
+**How iOS avoids it.** `ContentView.onAppear` calls `choreStore.bind(householdId:)`, and
+`.onChange(of: householdManager.household?.id)` re-binds — both while `LoadingScreen` is
+still on screen, because the gate holds there until `householdManager.loadState` is
+`.ready`. By the time `MainView` appears, Firestore has served the local cache (persistence
+is on by default), so Home draws its real state on the first frame. iOS has no explicit
+"chores loaded" flag; it simply never renders Home before the listener has had its moment.
+
+Android binds at the same point — `ChoreProvider` is keyed on `household?.id` and the
+household resolves during the LoadingScreen gate — but it did NOT wait for the first
+snapshot, so Home rendered `chores.length === 0` ("No Chores Yet!" / "chore-free") for as
+long as the read took.
+
+- `ChoreContext` now exposes `ready`, false from each (re)bind until the chores listener
+  delivers its first snapshot. It also flips on the listener's ERROR callback, so a rules
+  rejection cannot strand the app on the splash, and it is true immediately when there is
+  no household to read from.
+- The root gate holds `LoadingScreen` on `!chores.ready`, placed after the notification
+  prompt so only the main app waits.
+- A 4s cap releases the gate regardless. Persistence is enabled by default (verified in
+  `UniversalFirebaseFirestoreCommon.java` — RNFB defers to the SDK default), so a warm
+  launch waits milliseconds; the cap only matters on a first-ever launch with no cache and
+  a slow network, where it restores exactly the old behaviour instead of a stuck splash.
+
+Verification: `npm run typecheck` passes. Not device-verified — the phone is off ADB. The
+thing to watch on device is the cold-start feel: splash → Home with data, and no
+intermediate empty state.
+
+Don't regress: anything the first screen renders conditionally on Firestore data needs a
+"first snapshot" flag, not just the data itself — an empty array means "nothing yet" and
+"nothing exists" at the same time. Keep the error callback flipping `ready`, and keep the
+timeout cap.
+
+### Signing keys and SHA-1 fingerprints (Android)
+
+Four distinct certificates are in play. Google Sign-In validates the RUNNING app's signing cert against OAuth clients registered in the Firebase project, so every cert a build can be signed with must be registered or that build gets `DEVELOPER_ERROR` (GMS status 10).
+
+| Cert | SHA-1 | Signs | Must be in Firebase |
+|---|---|---|---|
+| **Play App Signing key** (Play Console → App integrity → App signing → *App signing key* card → Classical key) | `72:6D:FA:0D:F4:B8:BA:78:9E:02:F9:B6:DF:DA:B2:B3:A8:E6:2A:89` | every APK Play delivers — internal testing included | **YES** — this is the one testers need |
+| Local debug keystore (`android/app/debug.keystore`) | `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25` | `assembleDebug` / Metro builds | yes, for local dev |
+| Local upload keystore (`credentials/upload-keystore.jks`) | `D2:BF:E1:E2:A0:31:F3:B4:D6:54:7E:80:1A:43:34:B8:9B:88:ED:0A` | locally installed release APK/AAB | yes, for local release testing |
+| Play *Upload key* certificate (Play Console → App signing → bottom section) | `B7:6A:2E:D3:76:F1:74:B6:A9:81:CE:D5:AE:DA:91:94:F3:50:35:13` | nothing on-device — Play only checks it at upload | no (registering it is harmless but pointless) |
+
+**Open discrepancy:** Play lists the upload key as `B7:6A…` while `credentials/upload-keystore.jks` is `D2:BF…`. Those should match. Combined with the "Previous app signing keys" entry dated 19 Aug 2026, either the upload key was reset or a bundle was built with a keystore outside this repo (an EAS-managed credential behaves that way). Resolve this BEFORE the next release: if Play expects `B7:6A…`, a `bundleRelease` signed by this repo's keystore is rejected at upload.
+
+Registering a fingerprint in Firebase creates the OAuth client server-side, so sign-in starts working WITHOUT a rebuild or re-upload. Re-downloading `google-services.json` only keeps the checked-in file in sync for future builds.
+
+**Resolved 2026-08-27:** all four certs are now registered and the refreshed `google-services.json` is installed at both the repo root and `android/app/` (identical md5). It carries four `client_type: 1` entries — one per fingerprint above — plus the unchanged `client_type: 3` web client `131458540102-g56h4ush…`, which `AuthProvider` hardcodes as `webClientId`. Diffed the old and new files before installing: project number/id, `mobilesdk_app_id`, package name, api key and web client are byte-identical; only the Android OAuth client list grew. Nothing in code needed to change.
+
 ### Repository
 
 - Canonical React Native ChoreBuddy GitHub remote: `https://github.com/vs-darsh-viroja/React-Native-Chorebuddy.git`
@@ -730,7 +1595,7 @@ Audited all 13 iOS `View/Common` files against the RN port. Three had no equival
 
 Don't regress: avatars render through `AvatarView` only — never re-inline the `data:image/jpeg;base64,` prefix; profile photos must go through `encodeAvatarPhoto` so the 300KB cap holds; locked Pro actions show `ProLimitPopup` first and only reach the paywall via its Unlock button; the notification toggle is 41×24, not the iOS-system 51×31.
 
-**Force-update gate — live Remote Config blocks the current version.** The new gate was verified on the emulator and rendered the Update Required screen because the project's Remote Config really is set to `isForceUpdateRequired: true` with `minimumAppVersion: "1.1"`, while `app.json` version is `1.0.0`. The gate is behaving correctly, but shipping as-is would hard-block every Android user. Before the next Play upload either raise `app.json` `version` to at least `1.1` or change `minimumAppVersion`/`isForceUpdateRequired` in Firebase Remote Config.
+**Force-update gate — live Remote Config blocked the current version (RESOLVED 2026-08-27: RC now reads `isForceUpdateRequired: false` / `minimumAppVersion: 1.0`).** The new gate was verified on the emulator and rendered the Update Required screen because the project's Remote Config really is set to `isForceUpdateRequired: true` with `minimumAppVersion: "1.1"`, while `app.json` version is `1.0.0`. The gate is behaving correctly, but shipping as-is would hard-block every Android user. Before the next Play upload either raise `app.json` `version` to at least `1.1` or change `minimumAppVersion`/`isForceUpdateRequired` in Firebase Remote Config.
 
 ### 2026-08-24 — Add Chore wizard rebuilt against AddChoreView.swift
 
@@ -780,7 +1645,7 @@ Deliberately not ported, with reasons:
 
 - `LocalImageStore`, `ImageResizer`, `ShareablePhoto` — dead code on iOS (zero references outside their own files; leftovers from the sibling Pixvert/GLBQ apps).
 - `AppClock` — a debug date override whose only UI (Settings) is commented out on iOS, so `AppClock.now` is identical to `Date()` in every shipping path. Adding the indirection across ~15 Android files would buy nothing.
-- `QuickActionManager` — iOS home-screen quick actions ("Wait! Don't go yet" → gift paywall, "Help us improve" → support mail). The Android equivalent is launcher app shortcuts, which needs a new native module (`expo-quick-actions`) and its own Android semantics. **Still outstanding.**
+- `QuickActionManager` — iOS home-screen quick actions ("Wait! Don't go yet" → gift paywall, "Help us improve" → support mail). The Android equivalent is launcher app shortcuts, which needs a new native module (`expo-quick-actions`) and its own Android semantics. **PORTED 2026-08-31 — see that session entry.**
 - `Enums.KeychainHelper` / `UserSettings`' Keychain mirroring — Android persists the same flags in AsyncStorage; the iOS Keychain copy exists to survive reinstall, which is a separate decision.
 
 Verification: `npm run typecheck` passes; `:app:assembleDebug` succeeds (683 tasks, 9m 13s) with the Crashlytics Gradle plugin applied and the release signing block intact after prebuild; the app launches on emulator-5554 against Metro 8082 with no fatals, native Crashlytics initializes (collection off in debug, as intended), and `logScreenView` plus the new Remote Config reads are visible in logcat.
@@ -930,3 +1795,77 @@ Also pinned two line boxes per the standing Android font-padding rule: the optio
 Verification: `npm run typecheck` passes; the geometry is derived from the iOS tokens. NOT device-verified — the moto g35 is attached but asleep behind its secure keyguard, so screencaps return black. Metro 8083 is running, so unlocking the phone delivers this over Fast Refresh; re-check the sheet then (each card should span half the row).
 
 Don't regress: `PressScale` hoists flex props — do NOT re-add per-call-site `flex: 1` wrapper Views for it, and do not extend the hoist to `position`/`top`/`left`/`right`/`bottom` without re-checking every absolutely-positioned call site. Never mutate the object `StyleSheet.flatten` returns.
+
+### 2026-08-31 — Android launch screen: full-bleed artwork over pink, ported from Arbora
+
+The launch screen showed the 1125×2436 splash artwork as a small centred rectangle floating in a pale `#FBF7FD` field. Not an asset problem — the same two-screen Android 12+ split Arbora already documented and solved:
+
+1. **The system splash** (`Theme.App.SplashScreen`) draws `windowSplashScreenAnimatedIcon` centred in a fixed icon slot that Android sizes itself, scaling the image to FIT. Handing it the whole launch canvas is exactly what produced the small centred rectangle, and **no drawable can make it full-bleed** — that slot is not overridable. Its background accepts a COLOR only, never a gradient.
+2. **The window that follows it** via `postSplashScreenTheme` (`AppTheme`) holds until React Native's view attaches — and holds *again* for as long as `App.tsx` returns `null` while `useFonts` resolves. Expo leaves `AppTheme` with no `android:windowBackground`, so this stretch was blank. That is the "blank colour screen" in the report.
+
+Ported `Arbora/plugins/withLaunchScreenFill.js` (itself a port of TC9's hand-written native files) as `plugins/withLaunchScreenFill.js`, adapted for the user's gradient:
+
+- (1) is now a **bare `#FED6DC` field with no icon**: `expo-splash-screen` gets a blank 48×48 transparent PNG (`assets/images/splash-blank.png`, generated) at `imageWidth: 1`. The legacy `expo.splash` block is gone.
+- (2) is a layer-list — `LinearGradient(#FFD6DC → #FCA3B0, top→bottom)` as a `<shape>` base, then `splash.png` as a `<bitmap android:gravity="fill">` — set as `AppTheme`'s `android:windowBackground`. The gradient is the user's SwiftUI stops verbatim; because the system splash can only take a flat colour, the requested `#FED6DC` fallback is what the first screen uses and the gradient lives on the second.
+- **`.ignoresSafeArea()` equivalent:** `AppTheme` also gets `statusBarColor`/`navigationBarColor` transparent and `windowLightStatusBar` true. Expo had written an opaque `android:statusBarColor` of `#FBF7FD`, which would have painted a pale band across the top of an otherwise full-bleed launch screen. `androidStatusBar: { barStyle: "dark-content", translucent: true }` in `app.json` makes prebuild emit the same (`backgroundColor` is deliberately omitted — setting it makes Expo warn that it conflicts with the splash colour, and `translucent: true` ignores it anyway).
+- `App.tsx` now holds the native splash with `preventAutoHideAsync()` and hides it once `useFonts` resolves **or errors** (never strand the user on a splash), matching Arbora. `LoadingScreen`'s root background moved from `colors.background` to `#FED6DC` so a slow bitmap decode cannot flash pale lavender between the native window and the JS screen.
+
+Applied in **both** places on purpose, as with the permission trim and the launcher icon: the config plugin so a future prebuild reproduces it, and directly into `android/app/src/main/res/` so no prebuild had to run — `expo prebuild` would have wiped the release signing block out of `android/app/build.gradle`.
+
+`android:gravity="fill"` stretches on both axes rather than aspect-filling like iOS `scaleAspectFill`. Harmless on a phone (artwork 0.462, a 1080×2400 device 0.450, under 3% distortion) but it WOULD distort on a tablet; the fix there is per-orientation assets, not a different gravity — a layer-list `<bitmap>` has no centre-crop.
+
+Verification: `npm run typecheck` passes; `:app:assembleDebug` succeeds (683 tasks, 19s) and the APK was installed. Checked in the **compiled** `resources.arsc` rather than trusting the source XML — `style/AppTheme` carries `0x01010054` (windowBackground) `= @drawable/launch_screen`, `0x01010451`/`0x01010452` (status/navigation bar colour) `= @android:color/transparent`, `0x010104e0` (windowLightStatusBar) `= true`, and `color/splashscreen_background = #fffed6dc`; the artwork is packaged at `drawable-nodpi-v4` and `drawable-night-nodpi-v8`, and all five `splashscreen_logo.png` densities are now the 88-byte transparent PNG. The plugin's `withAndroidStyles` half was separately exercised against the pre-plugin `styles.xml` shape and OVERWRITES the existing opaque `statusBarColor` rather than appending a duplicate. **Not seen on screen** — the moto g35 is asleep behind its secure keyguard (`mDreamingLockscreen=true`), whose screencaps return black, and launch resources are compiled so Fast Refresh cannot deliver them; the build is installed and will show on the next cold start after unlock.
+
+Don't regress: the launch artwork lives on `AppTheme`'s `windowBackground`, NOT on the system splash — never hand the full canvas back to `windowSplashScreenAnimatedIcon`, it can only ever shrink it into the icon slot. Keep `expo-splash-screen` pointed at the blank 1dp image. `android/` is gitignored and prebuild rewrites it, so any change here must land in `plugins/withLaunchScreenFill.js` too, and the signing block must be re-applied after any `expo prebuild`.
+
+### 2026-09-01 — Snoozed chart cells now show a pause glyph; the dot means "no task"
+
+Reported against Figma node `2-29230`: the pause icon is missing, and a snoozed
+occurrence is drawn with the same dot as a day with nothing scheduled.
+
+**The Figma node could not be read** — `get_screenshot`/`get_design_context` still
+return "you don't have edit access to this file" for `1ydEE38jtIhIInxrjbawYt`
+(same block recorded on 2026-08-25). Implemented from the iOS source and the
+report instead; re-check the cell against that node once access is granted.
+
+The status DERIVATION was already correct — `ChartView.status()` maps a `paused`
+event to `snoozed` and a non-occurring day to `noTask`. Only the rendering
+conflated them, and it does so on iOS too: `ScheduleView.cellGlyph` has
+`case .noTask, .snoozed:` drawing one member-coloured 5pt circle for both. So
+this is a **deliberate divergence from iOS, at the user's request**, not a port
+gap:
+
+- `PauseGlyph` added to `glyphs.tsx` (two rounded bars, 6×8 viewBox) — there is
+  no pause asset in the catalog on either platform; `statusSnoozeIcon` is the
+  moon+ZZZ art used by `ChoreStatusView`, not a pause mark.
+- Snoozed cells draw the pause at `colors.purple` on a `${colors.purple}1A`
+  fill. That accent is not invented: `ChoreStatusView`'s Snoozed theme already
+  uses purple accent / `1A` card fill / `1F` track, so the chart now agrees with
+  the status screen. `noTask` keeps iOS's member-coloured dot; `pending` stays
+  empty.
+- Legend gained a fifth **Snoozed** item. Five items fit a 375-wide row
+  (≈301 of 345 usable at 11pt), and `flexWrap`/`rowGap` were added as a
+  safety net rather than a layout the design relies on.
+- **PDF/print report**: `CELL_TEXT` marks were `snoozed: '•'` and `noTask: ''`,
+  i.e. the same conflation plus a missing no-task mark. Now completed ✓ /
+  missed ✕ / skipped – / snoozed pause / noTask • / pending blank, each tinted
+  to the on-screen colour, with a symbol key under the title so a printed chart
+  is readable without the app. The pause is inline SVG, not a glyph character,
+  so the print engine cannot substitute a missing font.
+
+No other screen renders these cells — `noTaskDot` occurs only in `ChartView`,
+and the member sheet, member profile streak, Stats faces and Overview all key
+off `done`/`skipped`/`missed` events, never `paused`.
+
+Verification: `npm run typecheck` passes. The report HTML was rendered through
+headless Chrome using the strings pulled straight out of `ChartView.tsx` (pause
+bars and dot both correct, key row laid out), and the six cell states were
+rendered at 6× to check the pause's weight against the existing check/cross/bar
+glyphs. NOT device-verified — the moto g35 is attached with Metro on 8081 but
+sits screen-off behind its PIN keyguard, whose screencaps return black; Fast
+Refresh delivers this once unlocked.
+
+Don't regress: the dot is reserved for `noTask` — never draw it for `snoozed`
+again, even though iOS's `cellGlyph` does. Keep the screen and the PDF marks in
+step; they are two renderers of one `Cell` union and drifting apart is how the
+snoozed dot survived this long.

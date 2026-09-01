@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Images } from '@/constants/assets';
 import { AppImage } from '@/components/AppImage';
-import { AvatarView, pickAvatarPhoto } from '@/components/AvatarView';
+import { AvatarView, MAX_CHORE_PHOTOS, pickChorePhotos } from '@/components/AvatarView';
 import { AssignMemberSheet, ChangeZoneSheet, PhotosSheet, ReminderSheet, REMINDER_NOTIFY_OPTIONS, timeLabel } from '@/components/AddChoreSheets';
 import {
   AlarmGlyph, ChevronGlyph, ChoreCalendarGlyph, DueOnGlyph, EditGlyph, MarkDoneGlyph,
@@ -15,6 +15,7 @@ import {
 import { PressScale } from '@/components/motion';
 import { predefinedZoneSections, zoneIcon, zonePalettes } from '@/models/zones';
 import { dueBarGradient, dueTrackFill, liveDueState } from '@/models/dueState';
+import { useKeyboardAutoScroll } from '@/hooks/useKeyboardAutoScroll';
 import { loadChorePhotos, replaceChorePhotos } from '@/services/ChorePhotos';
 import { useChores, type Chore } from '@/services/ChoreContext';
 import { useHousehold, type HouseholdMember } from '@/services/HouseholdContext';
@@ -76,6 +77,10 @@ type DetailProps = {
 };
 
 function Detail({ chore, isEditing, navigation, insets, store, household, hasPro }: DetailProps) {
+  const autoScroll = useKeyboardAutoScroll();
+  // iOS puts this CTA 20 above the window bottom; Android lifts it clear of the
+  // navigation bar, and the bottom fade grows by the same amount (see BottomFade).
+  const ctaBottom = Math.max(s(20), insets.bottom + s(12));
   const [displayName, setDisplayName] = useState(chore.name);
   const [zoneName, setZoneName] = useState(chore.zoneName);
   const [assigned, setAssigned] = useState<string[]>(chore.assignedMemberIds);
@@ -182,10 +187,14 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
     else { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); void store.setCompleted(chore, true); }
   };
 
+  /**
+   * iOS `photoPicker` is `PhotosPicker(maxSelectionCount: 10)` and its
+   * `loadPhotos()` APPENDS the fresh picks, de-duplicated, under the same cap.
+   */
   const addPhoto = async () => {
-    const encoded = await pickAvatarPhoto(false);
-    if (!encoded) return;
-    setPhotos(current => [...current, encoded].slice(0, 10));
+    const encoded = await pickChorePhotos(MAX_CHORE_PHOTOS - photos.length);
+    if (!encoded.length) return;
+    setPhotos(current => [...current, ...encoded].slice(0, MAX_CHORE_PHOTOS));
     photosDirty.current = true;
     markDirty();
   };
@@ -195,7 +204,14 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
     <View style={styles.root}>
       <Header title={isEditing ? 'Edit Chore' : 'Chore Details'} onBack={() => navigation.goBack()} onMenu={() => setMenu(value => !value)} />
 
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, { paddingBottom: s(140) + insets.bottom }]}>
+      <ScrollView
+        ref={autoScroll.ref}
+        onScroll={autoScroll.onScroll}
+        scrollEventThrottle={autoScroll.scrollEventThrottle}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.scroll, { paddingBottom: s(140) + insets.bottom + autoScroll.padBottom }]}
+      >
         {/* iOS dueOnCard */}
         <View style={[styles.card, { backgroundColor: cardFill, borderColor: accent }]}>
           <View style={styles.row}>
@@ -247,6 +263,7 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
             {notes.map(field => (
               <View key={field.id} style={styles.noteRow}>
                 <TextInput
+                  onFocus={autoScroll.onFocus}
                   editable={isEditing}
                   multiline
                   value={field.text}
@@ -291,6 +308,14 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
               <Text style={[styles.labelStrong, assignInvalid && { color: CORAL }]}>Assign Task to*</Text>
               <View style={styles.spacer} />
               {isEditing && (
+                /* iOS is `HStack(spacing: 6) { Text, chevron 5x9 }` with
+                   `.padding(.horizontal, 10)` — equal side paddings, 6 between.
+                   Those offsets live on the CHILDREN, not on the pill: this row has
+                   twice truncated its label on device (2026-08-27 painted only "Add",
+                   and a container `paddingHorizontal` + `gap` painted only "member"),
+                   and the shape that renders the full string is padding-on-children
+                   with the chevron in its own sized box. The mechanism behind the
+                   truncation is still unidentified, so do not reshape this row. */
                 <View style={styles.addMemberPill}>
                   <Text style={styles.addMemberText}>Add member</Text>
                   <View style={styles.addMemberChevron}><ChevronGlyph width={s(5)} height={s(9)} color={colors.purple} /></View>
@@ -302,14 +327,18 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarRow}>
                 {assignedProfiles.map((member, index) => (
                   <View key={member.id} style={styles.avatarCell}>
-                    <View style={[styles.avatarWrap, { backgroundColor: RING_PALETTE[index % RING_PALETTE.length] }]}>
-                      <AvatarView avatar={member.avatar} photoData={member.photoData} size={s(46)} />
+                    <View style={styles.avatarStack}>
+                      <View style={[styles.avatarWrap, { backgroundColor: RING_PALETTE[index % RING_PALETTE.length] }]}>
+                        <AvatarView avatar={member.avatar} photoData={member.photoData} size={s(46)} />
+                      </View>
+                      {isEditing && (
+                        <View style={styles.avatarRemoveSlot}>
+                          <PressScale onPress={() => { setAssigned(assigned.filter(id => id !== member.id)); markDirty(); }} style={styles.avatarRemove}>
+                            <Text style={styles.avatarRemoveText}>✕</Text>
+                          </PressScale>
+                        </View>
+                      )}
                     </View>
-                    {isEditing && (
-                      <PressScale onPress={() => { setAssigned(assigned.filter(id => id !== member.id)); markDirty(); }} style={styles.avatarRemove}>
-                        <Text style={styles.avatarRemoveText}>✕</Text>
-                      </PressScale>
-                    )}
                     <Text style={styles.avatarName} numberOfLines={1}>{member.name}</Text>
                   </View>
                 ))}
@@ -343,6 +372,7 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
           {subtasks.map(field => (
             <View key={field.id} style={styles.subtaskRow}>
               <TextInput
+                onFocus={autoScroll.onFocus}
                 editable={isEditing}
                 value={field.text}
                 onChangeText={text => { setSubtasks(subtasks.map(item => (item.id === field.id ? { ...item, text } : item))); markDirty(); }}
@@ -389,9 +419,14 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
                     )}
                   </View>
                 ))}
+                {/*
+                  Same deliberate deviation as AddChoreView: iOS's `addThumbLabel` is a
+                  bare white `plusIcon` on `appBackground`, which is invisible, so it
+                  keeps the 12% purple square from `uploadBoxLabel`.
+                */}
                 {isEditing && photos.length < 3 && (
                   <PressScale onPress={() => { void addPhoto(); }} style={styles.addThumb}>
-                    <AppImage source={Images.plusIcon} resizeMode="contain" style={styles.uploadPlus} />
+                    <View style={styles.uploadIcon}><AppImage source={Images.plusIcon} resizeMode="contain" style={styles.uploadPlus} /></View>
                   </PressScale>
                 )}
               </View>
@@ -401,8 +436,8 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
       </ScrollView>
 
       {/* iOS markAsDoneBar */}
-      <LinearGradient colors={[`${colors.background}00`, colors.background]} style={styles.bottomFade} pointerEvents="none" />
-      <View style={[styles.bottomBar, { bottom: Math.max(s(20), insets.bottom + s(12)) }]}>
+      <LinearGradient colors={[`${colors.background}00`, colors.background]} style={[styles.bottomFade, { height: s(184) + Math.max(0, ctaBottom - s(20)) }]} pointerEvents="none" />
+      <View style={[styles.bottomBar, { bottom: ctaBottom }]}>
         <PressScale haptic="none" onPress={onCta} style={[styles.cta, { backgroundColor: cta.color, opacity: assignInvalid ? 0.5 : 1 }]}>
           {!isEditing && (isDone ? <UndoGlyph size={s(20)} color={colors.white} /> : <MarkDoneGlyph size={s(20)} color={colors.white} />)}
           <Text style={styles.ctaText}>{cta.title}</Text>
@@ -464,7 +499,7 @@ function Detail({ chore, isEditing, navigation, insets, store, household, hasPro
       {sheet === 'member' && (
         <AssignMemberSheet
           selected={assigned}
-          onToggle={id => { setAssigned(current => (current.includes(id) ? current.filter(item => item !== id) : [...current, id])); markDirty(); clearValidation(); }}
+          onSave={ids => { setAssigned(ids); markDirty(); clearValidation(); }}
           onCreate={(name, avatar, photoData) => void household.addMember(name, avatar, photoData)}
           onClose={() => setSheet(null)}
         />
@@ -599,7 +634,12 @@ const styles = StyleSheet.create({
   missing: { textAlign: 'center', marginTop: s(40), ...font('semibold', 18), color: colors.text },
 
   headerWrap: { paddingHorizontal: s(15), paddingTop: s(59) },
-  header: { alignItems: 'center', justifyContent: 'center' },
+  // iOS's header is a ZStack whose height is its 40pt circle buttons, so the
+  // ScrollView below starts at 59 + 40. Without an explicit height this row was only
+  // as tall as the 22pt title (~26), which both raised the scroll by ~14 units and
+  // left the absolutely-centred 40pt buttons OVERHANGING the scroll's top edge — so
+  // scrolled cards slid under them instead of stopping cleanly below the header.
+  header: { height: s(40), alignItems: 'center', justifyContent: 'center' },
   headerTitle: { ...font('semibold', 22), lineHeight: s(26.2), includeFontPadding: false, color: colors.text },
   headerButtons: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   circle: { width: s(40), height: s(40), borderRadius: s(20), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(5), color: 'rgba(0,0,0,0.1)' }] },
@@ -641,11 +681,13 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: `${colors.text}1A` },
   addMemberPill: { flexDirection: 'row', alignItems: 'center', flexShrink: 0, height: s(26), borderRadius: s(13), backgroundColor: `${colors.purple}1A` },
   addMemberText: { ...font('medium', 12), lineHeight: s(14.3), includeFontPadding: false, color: colors.purple, flexShrink: 0, paddingLeft: s(10) },
-  addMemberChevron: { width: s(16), height: s(26), alignItems: 'center', justifyContent: 'center' },
+  addMemberChevron: { height: s(26), paddingLeft: s(6), paddingRight: s(10), alignItems: 'center', justifyContent: 'center' },
   avatarRow: { gap: s(20), paddingTop: s(3) },
   avatarCell: { alignItems: 'center', gap: s(3) },
   avatarWrap: { width: s(46), height: s(46), borderRadius: s(23), borderWidth: 1.1, borderColor: colors.white, overflow: 'hidden' },
-  avatarRemove: { position: 'absolute', top: -s(2), right: -s(6), width: s(18), height: s(18), borderRadius: s(9), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}33`, alignItems: 'center', justifyContent: 'center' },
+  avatarStack: { width: s(46), height: s(46) },
+  avatarRemoveSlot: { position: 'absolute', top: -s(2), right: -s(6), zIndex: 2 },
+  avatarRemove: { width: s(18), height: s(18), borderRadius: s(9), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}33`, alignItems: 'center', justifyContent: 'center' },
   avatarRemoveText: { fontSize: s(8), fontWeight: '600', color: `${colors.text}99` },
   avatarName: { ...font('regular', 12), lineHeight: s(14.3), includeFontPadding: false, color: colors.text, maxWidth: s(64), textAlign: 'center' },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: s(6) },

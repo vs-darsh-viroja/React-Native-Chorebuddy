@@ -1,5 +1,5 @@
 import React from 'react';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 /** Exact paths from assets/catalog/zoneCalendarIcon.svg, tintable like iOS template rendering. */
 export function ZoneCalendarGlyph({ size, color }: { size: number; color: string }) {
@@ -107,6 +107,20 @@ export function CrossGlyph({ size, color, strokeWidth = 1.5 }: { size: number; c
   return (
     <Svg width={size} height={size} viewBox="0 0 10 10">
       <Path d="M1 1 L9 9 M9 1 L1 9" stroke={color} strokeWidth={strokeWidth * (10 / size) * (size / 10)} strokeLinecap="round" fill="none" />
+    </Svg>
+  );
+}
+
+/**
+ * Snoozed marker: the two rounded bars of a pause symbol. The chart previously
+ * drew snoozed and no-task cells with the same dot, so a moved occurrence was
+ * indistinguishable from a day with nothing scheduled.
+ */
+export function PauseGlyph({ width, height, color }: { width: number; height: number; color: string }) {
+  return (
+    <Svg width={width} height={height} viewBox="0 0 6 8">
+      <Rect x={0} y={0} width={2.2} height={8} rx={1.1} fill={color} />
+      <Rect x={3.8} y={0} width={2.2} height={8} rx={1.1} fill={color} />
     </Svg>
   );
 }

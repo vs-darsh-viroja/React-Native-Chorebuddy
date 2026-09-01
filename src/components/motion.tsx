@@ -169,9 +169,15 @@ export function BlurCircle({ diameter, color, opacity, blur, cx, cy }: { diamete
 }
 
 /** iOS bottom `LinearGradient(appBackground 0 → 1)` pinned to the screen bottom. */
-export function BottomFade({ height = 154 }: { height?: number }) {
+export function BottomFade({ height = 154, extra = 0 }: { height?: number; extra?: number }) {
+  // `extra` is RAW dp, added on top of the scaled design height. The fade is
+  // anchored to the window bottom, but on Android every bottom CTA is lifted by
+  // the navigation-bar inset — so without this the fade reaches LESS far above
+  // the button than it does on iOS. Callers pass the amount their CTA was
+  // lifted, which keeps the fade's top edge the same distance above the button
+  // as iOS. Zero on gesture-nav devices, where the layout is already iOS-exact.
   return (
-    <LinearGradient colors={[`${colors.background}00`, colors.background]} style={[styles.fade, { height: s(height) }]} pointerEvents="none" />
+    <LinearGradient colors={[`${colors.background}00`, colors.background]} style={[styles.fade, { height: s(height) + extra }]} pointerEvents="none" />
   );
 }
 

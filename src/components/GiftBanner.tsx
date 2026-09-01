@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { ActivityIndicator, Alert, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Images } from '@/constants/assets';
 import { colors, font, isPad, s } from '@/theme';
@@ -7,8 +7,24 @@ import { usePurchases } from '@/services/PurchaseManager';
 import { useGiftTimer } from '@/services/GiftTimer';
 import { usePaywallConfig } from '@/services/PaywallConfig';
 import { AppImage } from '@/components/AppImage';
+import { Spinner } from '@/components/Spinner';
 
 const pad = (value: number) => String(value).padStart(2, '0');
+
+/**
+ * Every input the banner's visibility depends on has to be KNOWN before it draws
+ * anything — the RC flag, the countdown's stored start date, and the entitlement.
+ * iOS gets all three synchronously (cached Remote Config, `UserDefaults`, StoreKit),
+ * so its banner is either there or not on the first frame. On Android all three are
+ * async, and rendering under their defaults is what made the banner appear with a
+ * countdown, then lose the countdown, then disappear.
+ */
+function useBannerInputsReady() {
+  const purchases = usePurchases();
+  const timer = useGiftTimer();
+  const config = usePaywallConfig();
+  return config.ready && timer.ready && purchases.hasLoadedInitialStatus;
+}
 
 /**
  * iOS `LifeTimeGiftOfferBannerView` — a 101pt banner over the gift artwork.
@@ -29,7 +45,8 @@ export function GiftBanner() {
   const gift = purchases.product('gift');
   const yearly = purchases.product('yearly');
   const scale = useRef(new Animated.Value(1)).current;
-  if (purchases.hasPro) return null;
+  const ready = useBannerInputsReady();
+  if (!ready || purchases.hasPro) return null;
   const discount = yearly?.price && gift?.price ? Math.max(0, Math.round((1 - gift.price / yearly.price) * 100)) : 67;
   const buy = async () => {
     if (!gift) return Alert.alert('Gift Unavailable', 'This offer is not available from Google Play right now.');
@@ -72,7 +89,7 @@ export function GiftBanner() {
           </View>
           <View style={styles.price}>
             {purchases.isInProgress ? (
-              <ActivityIndicator color={colors.purple} />
+              <Spinner size={s(20)} color={colors.purple} />
             ) : (
               <View style={styles.priceRow}>
                 <Text style={styles.old} numberOfLines={1}>{yearly?.displayPrice ?? '—'}</Text>
@@ -92,7 +109,9 @@ export function HomeGiftBanner() {
   const purchases = usePurchases();
   const timer = useGiftTimer();
   const config = usePaywallConfig();
-  if (timer.isExpired || purchases.hasPro || !config.showLifeTimeBannerAtHome) return null;
+  const ready = useBannerInputsReady();
+  // iOS `HomeView`: `!timerManager.isExpired && !purchaseManager.hasPro && remoteConfigManager.showLifeTimeBannerAtHome`.
+  if (!ready || timer.isExpired || purchases.hasPro || !config.showLifeTimeBannerAtHome) return null;
   // iOS applies `.padding(.top, 15)` at both Home call sites.
   return <View style={{ marginTop: s(15) }}><GiftBanner /></View>;
 }

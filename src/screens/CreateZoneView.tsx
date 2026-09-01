@@ -16,6 +16,7 @@ import { AppImage } from '@/components/AppImage';
 /** iOS `CreateZoneView`: name + live icon preview card, 6-column color and icon grids with drawn checkmarks, purple-edge save capsule over a bottom fade. */
 export function CreateZoneView({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'CreateZone'>) {
   const insets = useSafeAreaInsets();
+  const ctaBottom = Math.max(s(40), insets.bottom + s(16));
   const store = useChores();
   const editing = store.createdZones.find(zone => zone.id === route.params?.zoneId);
   /**
@@ -123,8 +124,11 @@ export function CreateZoneView({ navigation, route }: NativeStackScreenProps<Roo
         </View>
       </ScrollView>
 
-      <BottomFade height={183.5} />
-      <View style={[styles.footer, { bottom: Math.max(s(40), insets.bottom + s(16)) }]}>
+      {/* iOS: 183.5 fade to the window bottom with the button 40 above it, i.e. the
+          fade reaches 143.5 past the button. The Android button is lifted clear of
+          the navigation bar, so the fade grows by the same amount. */}
+      <BottomFade height={183.5} extra={ctaBottom - s(40)} />
+      <View style={[styles.footer, { bottom: ctaBottom }]}>
         <CapsuleCTA label={editing || convertFrom ? 'Save Changes' : 'Create Zone'} onPress={() => { void save(); }} disabled={!canSave} dimWhenDisabled={0.8} />
       </View>
     </View>
@@ -135,7 +139,7 @@ const CELL = `${100 / 6}%`;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  header: { paddingTop: s(59), paddingHorizontal: s(15), alignItems: 'center', justifyContent: 'center' },
+  header: { paddingTop: s(59), paddingHorizontal: s(15), height: s(99), alignItems: 'center', justifyContent: 'center' },
   headerTitle: { ...font('semibold', 22), color: colors.text },
   headerButtons: { position: 'absolute', top: s(59), left: s(15), right: s(15), flexDirection: 'row' },
   backIcon: { width: s(20), height: s(20) },
@@ -150,11 +154,22 @@ const styles = StyleSheet.create({
   error: { ...font('regular', 12), color: '#FF6262' },
   preview: { width: s(48), height: s(48), borderRadius: s(16), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   previewIcon: { width: s(30), height: s(30), tintColor: colors.white },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: s(9) },
-  cell: { width: CELL as `${number}%`, aspectRatio: 1, paddingHorizontal: s(4.5) },
-  swatch: { flex: 1, borderRadius: s(16), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  /**
+   * iOS is `LazyVGrid(columns: 6 x GridItem(.flexible(), spacing: 9), spacing: 9)`
+   * with each item `.aspectRatio(1, contentMode: .fit)` — 6 SQUARES of
+   * (315 - 5x9)/6 = 45, with the 9 gutters only BETWEEN columns.
+   *
+   * The previous port put `aspectRatio: 1` on the CELL and then padded it
+   * horizontally by 4.5 each side, so the item inside came out 9 units TALLER
+   * than wide (a portrait rounded rect). The aspect ratio has to sit on the item
+   * itself; the negative grid margin cancels the outer half-gutters so the item
+   * measures exactly iOS's 45 rather than 43.5.
+   */
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: s(9), marginHorizontal: -s(4.5) },
+  cell: { width: CELL as `${number}%`, paddingHorizontal: s(4.5) },
+  swatch: { aspectRatio: 1, borderRadius: s(16), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   swatchCheck: { width: s(20), height: s(20), borderRadius: s(10), backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
-  iconTile: { flex: 1, borderRadius: s(14), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center' },
+  iconTile: { aspectRatio: 1, borderRadius: s(14), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center' },
   iconTileOn: { borderWidth: 1.5, borderColor: colors.purple },
   tileIcon: { width: s(26), height: s(26) },
   iconCheck: { position: 'absolute', top: s(-6), right: s(-1.5), width: s(20), height: s(20), borderRadius: s(10), backgroundColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
