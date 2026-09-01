@@ -1397,6 +1397,53 @@ Don't regress: anything the first screen renders conditionally on Firestore data
 "nothing exists" at the same time. Keep the error callback flipping `ready`, and keep the
 timeout cap.
 
+### 2026-09-01 — Release version check before the Play push
+
+The user asked to make the version "proper" ahead of pushing, pointing at iOS's
+`IPHONEOS_DEPLOYMENT_TARGET = 16.6` and asking for the modern equivalent here.
+
+Read both projects rather than assuming:
+
+| | iOS | Android |
+|---|---|---|
+| user-visible version | `MARKETING_VERSION = 1.1` | **1.0.0** |
+| build number | `CURRENT_PROJECT_VERSION = 1` | versionCode 4 |
+| OS floor | deployment target 16.6 | minSdk 26 |
+| API target | — | targetSdk / compileSdk 36 |
+
+**The version is `1.0`, by the user's decision.** I first aligned it to iOS's 1.1 on the
+assumption that one release should carry one number across both stores; the user corrected
+that — this is Android's FIRST production release, so it starts at 1.0 regardless of where
+iOS has got to, and the two listings have separate release histories. They then asked for
+the two-component form iOS uses, so it is `1.0`, not `1.0.0`. `versionName` is a free-form
+string on Android, so Play accepts it, and it makes `AppConstant.appVersionLabel` read
+`ChoreBuddy V 1.0` — the same shape as iOS's support subjects. Set in `app.json`, mirrored
+by hand into `android/app/build.gradle` (prebuild is not being run), with the
+`AppConstant.appVersion` fallback and its doc comment moved to match.
+
+Checked the force-update path, since `isVersionOlder` now compares a two-component string:
+it pads missing components with 0, so installed `1.0` is NOT older than a minimum of `1.0`
+or `1.0.0` (no false force-update — and live RC is `1.0` with the flag off), while `1.0.1`
+and `1.1` both correctly trigger it.
+
+**minSdk stays 26, deliberately.** The iOS deployment target is not something to mirror
+numerically: 16.6 drops roughly three years of iOS releases, and the Android equivalent of
+that aggressiveness (minSdk 29-31) would cut real users for nothing. API 26 is the common
+modern floor — it is what notification channels and adaptive icons need, it is above React
+Native 0.81's own minimum of 24, and Play reported 17,239 supported device models at this
+level for bundle 3. Nothing in the app needs a higher API.
+
+**targetSdk 36** already clears Play's floor (35 since August 2025), and compileSdk matches.
+
+Verification: values read out of `ChoreBuddy.xcodeproj/project.pbxproj`, `app.json` and the
+merged debug manifest (`minSdkVersion=26 targetSdkVersion=36`); `npm run typecheck` passes.
+
+Don't regress: Android's version line is independent of iOS's — do not "sync" them.
+`android.versionCode` must exceed Play's highest before each upload; the repo is at 4 and
+Play's highest was 3 as of 2026-08-27, but uploads can happen outside this repo, so check
+the Play Console rather than trusting that number. Keep `app.json` and
+`android/app/build.gradle` in step whenever prebuild is not run.
+
 ### Signing keys and SHA-1 fingerprints (Android)
 
 Four distinct certificates are in play. Google Sign-In validates the RUNNING app's signing cert against OAuth clients registered in the Firebase project, so every cert a build can be signed with must be registered or that build gets `DEVELOPER_ERROR` (GMS status 10).

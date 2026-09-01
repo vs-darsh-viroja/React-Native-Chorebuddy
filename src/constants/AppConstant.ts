@@ -15,11 +15,11 @@ const androidPlatform = Platform.constants as { Model?: string; Release?: string
 
 export const AppConstant = {
   appName: Constants.expoConfig?.name ?? 'ChoreBuddy',
-  appVersion: Constants.expoConfig?.version ?? '1.0.0',
+  appVersion: Constants.expoConfig?.version ?? '1.0',
 
   packageName: 'chores.tracker.chorebuddy',
 
-  /** e.g. `ChoreBuddy V 1.0.0` — shown in Settings → About App and in support subjects. */
+  /** e.g. `ChoreBuddy V 1.0` — shown in Settings → About App and in support subjects. */
   get appVersionLabel() { return `${this.appName} V ${this.appVersion}`; },
 
   /** Play listing over https — used by the Settings → Share row. */
