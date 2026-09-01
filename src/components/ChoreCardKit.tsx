@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   completedPill: { backgroundColor: `${colors.success}1A`, borderRadius: s(14), paddingHorizontal: s(8), paddingVertical: s(6) },
   completedText: { ...font('medium', 12), color: colors.success },
   dueBadge: { flexDirection: 'row', alignItems: 'center', gap: s(5), borderRadius: s(14), paddingHorizontal: s(8), paddingVertical: s(6) },
-  dueText: { ...font('medium', 12) },
+  dueText: { ...font('medium', 12), lineHeight: s(14.3), includeFontPadding: false },
   avatars: { flexDirection: 'row' },
   avatar: { width: s(28), height: s(28), borderRadius: s(14), marginLeft: -s(8), backgroundColor: '#FF6E92', borderWidth: s(0.5), borderColor: colors.white, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   avatarImage: { width: '100%', height: '100%' },

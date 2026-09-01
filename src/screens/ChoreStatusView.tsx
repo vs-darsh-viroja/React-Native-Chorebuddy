@@ -9,7 +9,7 @@ import { BottomSheet, SheetCTA, SheetHeader, sheetFooterPad, useSheet } from '@/
 import { ChevronGlyph, DueOnGlyph } from '@/components/glyphs';
 import { SnoozeUntilSheet } from '@/components/ScheduleSheets';
 import { CircleButton, PressScale, useFloat } from '@/components/motion';
-import { dueAccent, dueBarGradient, dueCardFill, dueTrackFill, liveDueState, parseDueDate } from '@/models/dueState';
+import { dueAccent, dueBarGradient, dueCardFill, dueTrackFill, liveDueStateOn, parseDueDate } from '@/models/dueState';
 import { useChores, type Chore } from '@/services/ChoreContext';
 import { useHousehold, type HouseholdMember } from '@/services/HouseholdContext';
 import { AvatarView } from '@/components/AvatarView';
@@ -34,7 +34,13 @@ export function ChoreStatusView({ navigation, route }: NativeStackScreenProps<Ro
   const [sheet, setSheet] = useState<'done' | 'snooze' | null>(null);
 
   const chore = store.chores.find(item => item.id === route.params.choreId);
-  const occurrenceDay = route.params.day ? new Date(`${route.params.day}T00:00:00`) : new Date();
+  /**
+   * The occurrence this screen manages. Every action below writes to this day,
+   * so the card must describe it too — with no `day` param the chore's own
+   * anchor is the occurrence, not today.
+   */
+  const anchorDate = parseDueDate(chore?.dueDate ?? '');
+  const occurrenceDay = route.params.day ? new Date(`${route.params.day}T00:00:00`) : (anchorDate ?? new Date());
 
   if (!chore) {
     return (
@@ -55,22 +61,30 @@ export function ChoreStatusView({ navigation, route }: NativeStackScreenProps<Ro
    * iOS `isOccurrenceDone`: a done event for this day, or — when this day IS the
    * chore's anchor due date — the chore document's own `completed` flag.
    */
-  const anchor = parseDueDate(chore.dueDate);
-  const isDone = store.isDoneOn(chore.id, occurrenceDay) || (anchor !== null && dayKey(anchor) === dayKey(occurrenceDay) && chore.completed);
+  const isDone = store.isDoneOn(chore.id, occurrenceDay) || (anchorDate !== null && dayKey(anchorDate) === dayKey(occurrenceDay) && chore.completed);
   /** iOS `activeAction`: done wins, then skipped, then snoozed. */
   const activeAction: StatusAction = isDone ? 'done'
     : store.hasEvent(chore.id, occurrenceDay, 'skipped') ? 'skip'
       : store.isSnoozed(chore.id, occurrenceDay) ? 'snooze' : null;
 
-  const live = liveDueState(chore.dueDate);
+  /**
+   * Deliberate divergence from iOS: `ChoreStatusView.swift` themes Due On from
+   * `draft.dueDate` — the chore's single stored anchor — so every occurrence of
+   * a recurring chore reads the same date. Tapping "Due Tomorrow" in the chart
+   * then showed "31 August, 2026" while Done/Skip wrote to 2 September. The
+   * occurrence's own day is the truth here, and the Completed/Skipped branches
+   * below already used it.
+   */
+  const live = liveDueStateOn(occurrenceDay);
+  const occurrenceText = dayText(occurrenceDay);
   /** iOS `statusTheme`. */
   const theme = activeAction === 'done'
     ? { accent: GREEN, cardFill: '#EAF6E6', title: 'Completed', detail: chore.completedTime ? `at ${chore.completedTime}` : dayText(occurrenceDay), pill: 'Done', trackFill: '#EAF6E6', bar: ['#ADF079', GREEN] as [string, string], fraction: 1, progressLabel: 'Completed' }
     : activeAction === 'skip'
       ? { accent: ORANGE, cardFill: '#FFF3E3', title: 'Skipped', detail: dayText(occurrenceDay), pill: 'Skipped', trackFill: '#FFF3E3', bar: ['#FFD79B', ORANGE] as [string, string], fraction: 1, progressLabel: 'Skipped this time' }
       : activeAction === 'snooze'
-        ? { accent: colors.purple, cardFill: `${colors.purple}1A`, title: 'Snoozed', detail: chore.dueDate || chore.dueShort, pill: 'Snoozed', trackFill: `${colors.purple}1F`, bar: [`${colors.purple}73`, colors.purple] as [string, string], fraction: 1, progressLabel: 'Snoozed to a later date' }
-        : { accent: dueAccent[live.state], cardFill: dueCardFill[live.state], title: 'Due On', detail: chore.dueDate || chore.dueShort, pill: chore.frequency || 'One Time', trackFill: dueTrackFill[live.state], bar: dueBarGradient[live.state], fraction: live.fraction, progressLabel: live.label };
+        ? { accent: colors.purple, cardFill: `${colors.purple}1A`, title: 'Snoozed', detail: occurrenceText, pill: 'Snoozed', trackFill: `${colors.purple}1F`, bar: [`${colors.purple}73`, colors.purple] as [string, string], fraction: 1, progressLabel: 'Snoozed to a later date' }
+        : { accent: dueAccent[live.state], cardFill: dueCardFill[live.state], title: 'Due On', detail: occurrenceText, pill: chore.frequency || 'One Time', trackFill: dueTrackFill[live.state], bar: dueBarGradient[live.state], fraction: live.fraction, progressLabel: live.label };
 
   const assigned = chore.assignedMemberIds.map(id => members.find(member => member.id === id)).filter((member): member is HouseholdMember => Boolean(member));
   const overflow = assigned.length - 2;

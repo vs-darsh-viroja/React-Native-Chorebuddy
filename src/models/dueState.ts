@@ -34,9 +34,17 @@ export function parseDueDate(value: string): Date | null {
 
 /** iOS `DueState.live(from:)`: state buckets at ≤1 / ≤5 days, the countdown label, and the bar fraction over a 10-day horizon. */
 export function liveDueState(dueDate: string, now = new Date()): { state: DueState; label: string; fraction: number } {
-  const parsed = parseDueDate(dueDate);
-  if (!parsed) return { state: 'today', label: 'Due today', fraction: 0.52 };
-  const days = dayDelta(now, parsed);
+  return liveDueStateOn(parseDueDate(dueDate), now);
+}
+
+/**
+ * The same theme keyed on a Date rather than the chore's stored anchor string.
+ * A recurring chore has one `dueDate` but many occurrences, so any screen
+ * showing a SPECIFIC occurrence must theme it from that occurrence's own day.
+ */
+export function liveDueStateOn(day: Date | null, now = new Date()): { state: DueState; label: string; fraction: number } {
+  if (!day) return { state: 'today', label: 'Due today', fraction: 0.52 };
+  const days = dayDelta(now, day);
   const state: DueState = days <= 1 ? 'overdue' : days <= 5 ? 'today' : 'upcoming';
   const label = days < 0 ? `Overdue by ${-days} day${days === -1 ? '' : 's'}`
     : days === 0 ? 'Due today'

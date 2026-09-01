@@ -1869,3 +1869,97 @@ Don't regress: the dot is reserved for `noTask` — never draw it for `snoozed`
 again, even though iOS's `cellGlyph` does. Keep the screen and the PDF marks in
 step; they are two renderers of one `Cell` union and drifting apart is how the
 snoozed dot survived this long.
+
+### 2026-09-01 — Chore Status showed the chore's anchor date for every occurrence
+
+Reported from the chart member sheet: tapping the Overdue, Due Tomorrow and
+Due on 4 Sept cards for the same recurring chore all opened Chore Status
+reading **"Due On / 31 August, 2026"**.
+
+`ChoreStatusView` is a per-OCCURRENCE screen — it is pushed with a `day`, and
+Done, Skip, Snooze and Reset all write to `occurrenceDay`. But the Due On theme
+was built from `chore.dueDate`, the single anchor string stored on the chore
+document, and `liveDueState(chore.dueDate)` themed the card and progress bar
+from it too. So tapping "Due Tomorrow" and pressing Done marked **2 September**
+done while the card said 31 August — not just cosmetic, actively misleading.
+
+This is faithful to iOS (`ChoreStatusView.swift:95` `detail: current.draft?.dueDate`,
+:46 `DueState.live(from: draft.dueDate)`), so it is a **deliberate divergence,
+at the user's request**. Two things settle which date is correct: every mutation
+on the screen targets `occurrenceDay`, and the Completed/Skipped branches of
+`statusTheme` were ALREADY using `dayText(occurrenceDay)` — Due On and Snoozed
+were the only outliers.
+
+- `liveDueStateOn(day: Date | null)` added to `models/dueState.ts`; the existing
+  `liveDueState(string)` is now a thin wrapper, so the bucketing/label/fraction
+  rules are unchanged and shared — only the date they are computed FROM moved.
+- Due On and Snoozed details now render `dayText(occurrenceDay)`.
+- With no `day` route param the occurrence now falls back to the chore's parsed
+  anchor rather than today, so a future entry point cannot make the screen
+  describe today for a chore due next week. (Chart is currently the only pusher
+  and always passes a day.)
+
+Note the ≤1-day bucket is iOS's and was kept: an occurrence due TOMORROW themes
+red with the label "Due tomorrow", exactly as `ChoreDetailView` already shows a
+chore due tomorrow. The chart sheet's green "Due Tomorrow" badge uses the
+coarser `occurrenceDueState`; those two ramps differing is iOS's design, not
+this change.
+
+Verification: `npm run typecheck` passes; the three tapped occurrences from the
+report were run through the shipped function under the repo's Hermes binary
+against a 1 Sep 2026 clock — 31 Aug → overdue / "Overdue by 1 day", 2 Sep →
+"Due tomorrow", 4 Sep → "Due in 3 days", each captioned with its own date. Not
+device-verified — the moto g35 is on its PIN keyguard.
+
+Don't regress: `ChoreStatusView` describes ONE occurrence. Anything it renders
+must derive from `occurrenceDay`, never from `chore.dueDate` — the anchor is the
+same for every occurrence of a recurring chore.
+
+### 2026-09-01 — Due badges: the label sat 9px below the calendar icon (Android font padding, 6th occurrence)
+
+Reported on Zone Detail: the calendar glyph and its "Overdue" / "Today" label
+are not centred with each other. Measured on the device rather than eyeballed —
+the phone was unlocked this session, so the app was driven to Zone → Kitchen and
+the badge's pixels were analysed (pill background sampled as the modal colour,
+then ink split into column groups to separate the glyph from the text):
+
+| | icon ink centre | label ink centre | delta |
+|---|---|---|---|
+| Overdue badge, before | 936.5 | 945.5 | **+9.0 px** (~3.1 design units low) |
+| Overdue badge, after | 936.5 | 937.0 | +0.5 px |
+| Zone list badge, after | 726.5 | 727.5 | +1.0 px |
+
+The badge pill also shrank 81 → 77 px, landing on iOS's real 26.3-unit height
+(12 × 1.193 line box + 2 × 6 padding = 75.8 px at this device's 2.88 px per
+design unit).
+
+Cause is the standing rule: `dueText` was `font('medium', 12)` with no
+`lineHeight` and no `includeFontPadding: false`. The row is `alignItems:
+'center'`, so Android centres the text's PADDED box — which is ~1.8 design units
+taller than the real line box and asymmetric — while the 14-unit glyph centres on
+its own box, and the two ended up ~3 units apart. Note the OTF's own metrics do
+NOT predict this (`hhea` ascent/descent equal `usWinAscent/Descent`, and the
+cap block centres to within 0.04 dp either way), so the shift comes from
+Android's own top/bottom padding for this CFF font — which is exactly why this
+class of bug has to be measured on device, not derived from the font tables.
+
+Fixed at all four badge sites that share the shape — `ChoreCardKit.dueText`
+(Home + Zone Detail cards), `ZoneView.badgeText`, `MembersView.badgeText` and
+`ScheduleSheets.dueBadgeText` — with `lineHeight: s(14.3)` (12 × 1.193) +
+`includeFontPadding: false`. `ChoreDetailView.pillText` already had it, which is
+how the correct value was confirmed.
+
+Also checked and NOT a factor: `plusIcon.png`'s ink is exactly centred in its
+canvas (alpha bbox inset 0.131 on all four sides), and `ZoneCalendarGlyph`'s ink
+fills its viewBox, so neither icon contributes an offset.
+
+Verification: `npm run typecheck` passes; both the fix and the residual were
+measured on the moto g35 over Fast Refresh, and a 3× before/after crop of the
+Overdue badge shows the label rising onto the icon's centre line. The "Today"
+badge measures +4 px only because the ink bbox of "Today" includes the 'y'
+descender — isolating a cap glyph gives +0.0 px.
+
+Don't regress: ANY Text sharing a row with an icon needs `lineHeight`
+(fontSize × 1.193) + `includeFontPadding: false`. Matching the iOS spacing
+tokens is not enough — Android centres the padded box, so the glyphs drift even
+when every token is right.

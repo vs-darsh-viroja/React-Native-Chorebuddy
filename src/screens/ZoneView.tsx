@@ -165,5 +165,5 @@ const styles = StyleSheet.create({
   cardSubStrong: { ...font('medium', 12), color: `${colors.text}99` },
   cardOverdue: { ...font('medium', 12), color: colors.danger },
   badge: { flexDirection: 'row', alignItems: 'center', gap: s(5), borderRadius: s(14), paddingHorizontal: s(8), paddingVertical: s(6), marginLeft: s(8) },
-  badgeText: { ...font('medium', 12) },
+  badgeText: { ...font('medium', 12), lineHeight: s(14.3), includeFontPadding: false },
 });

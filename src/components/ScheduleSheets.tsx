@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
   completedPill: { backgroundColor: `${GREEN}1A`, borderRadius: s(14), paddingHorizontal: s(8), paddingVertical: s(6) },
   completedText: { ...font('medium', 12), color: GREEN },
   dueBadge: { flexDirection: 'row', alignItems: 'center', gap: s(5), borderRadius: s(14), paddingHorizontal: s(8), paddingVertical: s(6) },
-  dueBadgeText: { ...font('medium', 12) },
+  dueBadgeText: { ...font('medium', 12), lineHeight: s(14.3), includeFontPadding: false },
   progressBlock: { alignItems: 'flex-end', gap: s(4) },
   progressLabel: { ...font('regular', 10), color: `${colors.text}80` },
   progressTrack: { width: s(142), height: s(19), borderRadius: s(9.5), overflow: 'hidden', justifyContent: 'center' },

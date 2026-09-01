@@ -757,7 +757,7 @@ const styles = StyleSheet.create({
   overflowText: { ...font('medium', 11), color: `${colors.text}99` },
   dueBottom: { flexDirection: 'row', alignItems: 'flex-end' },
   badge: { flexDirection: 'row', alignItems: 'center', gap: s(5), borderRadius: s(14), paddingHorizontal: s(8), paddingVertical: s(6) },
-  badgeText: { ...font('medium', 12) },
+  badgeText: { ...font('medium', 12), lineHeight: s(14.3), includeFontPadding: false },
   progressBlock: { flex: 1, alignItems: 'flex-end', gap: s(4) },
   progressLabel: { ...font('regular', 10), color: `${colors.text}80` },
   progressTrack: { width: s(142), height: s(19), borderRadius: s(9.5), backgroundColor: `${colors.blue}1A`, overflow: 'hidden', justifyContent: 'center' },
