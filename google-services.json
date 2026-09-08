@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "131458540102-2gqam8ngrj8ethfppam7pm5t1u5s9743.apps.googleusercontent.com",
+          "client_id": "131458540102-6do0l65lk6i3facg5o34fb73pcpntn0d.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "chores.tracker.chorebuddy",
-            "certificate_hash": "d2bfe1e2a031f3b4d6547e801a4334b89b88ed0a"
+            "certificate_hash": "b7e7fa9001048835e42cd6cc514bd6d9c94ef986"
           }
         },
         {
@@ -30,19 +30,19 @@
           }
         },
         {
-          "client_id": "131458540102-huasaptkhflvtq563hqaqau7hgpftkj7.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "chores.tracker.chorebuddy",
-            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
-          }
-        },
-        {
           "client_id": "131458540102-p7g8b101mrqnffs2v9t3t7ec4u1bfrfu.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "chores.tracker.chorebuddy",
             "certificate_hash": "726dfa0df4b8ba789e02f9b6dfdab2b3a8e62a89"
+          }
+        },
+        {
+          "client_id": "131458540102-pi3v3ua6i6rf3snfgrb66d64n7r7fnpp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "chores.tracker.chorebuddy",
+            "certificate_hash": "e832ce0dc9b1e7ca4a54a5aee046ce5850d329c5"
           }
         },
         {
