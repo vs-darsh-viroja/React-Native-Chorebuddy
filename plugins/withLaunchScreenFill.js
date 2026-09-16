@@ -42,7 +42,7 @@
  * changing the gravity — there is no centre-crop for a layer-list `<bitmap>`.
  */
 
-const { withDangerousMod, withAndroidStyles } = require('expo/config-plugins');
+const { withDangerousMod, withAndroidStyles, withMod } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -146,10 +146,10 @@ function withLaunchScreenDrawables(config, opts) {
 }
 
 /**
- * Point `AppTheme`'s windowBackground at the layer-list, and make its status bar
- * transparent so the artwork really does reach the top edge (iOS
- * `.ignoresSafeArea()`). Expo writes an opaque `android:statusBarColor` here,
- * which would otherwise paint a pale band across the top of the launch screen.
+ * Point `AppTheme`'s windowBackground at the layer-list so the artwork reaches
+ * every edge (iOS `.ignoresSafeArea()`). Transparent system bars come from
+ * React Native's runtime `enableEdgeToEdge()`, not from theme attributes — see
+ * the note in the body.
  *
  * The style is located BY NAME, not through
  * `AndroidConfig.Styles.assignStylesValue` + `getAppThemeLightNoActionBarGroup()`.
@@ -178,16 +178,77 @@ function withLaunchScreenWindowBackground(config) {
     };
 
     put('android:windowBackground', '@drawable/launch_screen');
-    // Edge-to-edge: the launch artwork owns the full window, bars included.
-    put('android:statusBarColor', '@android:color/transparent');
-    put('android:navigationBarColor', '@android:color/transparent');
     // The splash is light pink, so the system icons must be dark to stay legible.
     put('android:windowLightStatusBar', 'true');
+
+    // `android:statusBarColor` / `android:navigationBarColor` are DELIBERATELY
+    // not set here (2026-09-16). They are deprecated in API 35 and are no-ops
+    // on this app's target 36, and Play Console flags them as "deprecated APIs
+    // or parameters for edge-to-edge". They were also redundant: the window is
+    // only created after `MainActivity.onCreate`, by which point Expo's
+    // `EdgeToEdgePackage` has already called React Native's
+    // `Window.enableEdgeToEdge()` (`WindowUtil.kt`), which sets both colours to
+    // transparent programmatically on every API level. So there is no frame in
+    // which the theme values could have applied. `app.json` must also keep its
+    // `androidStatusBar` block absent, or `@expo/config-plugins`'
+    // `withStatusBar` re-adds `android:statusBarColor` on the next prebuild.
 
     return cfg;
   });
 }
 
+
+/**
+ * Strip the two deprecated edge-to-edge colour attributes from `AppTheme`
+ * AFTER every other mod has run (2026-09-16).
+ *
+ * `android:statusBarColor` and `android:navigationBarColor` are deprecated in
+ * API 35 and are no-ops on this app's target 36; Play Console reports them as
+ * "deprecated APIs or parameters for edge-to-edge". They were also redundant —
+ * the window is created after `MainActivity.onCreate`, by which point Expo's
+ * `EdgeToEdgePackage` has called React Native's `Window.enableEdgeToEdge()`
+ * (`WindowUtil.kt`), which sets both to transparent programmatically on every
+ * API level — so there is no frame in which the theme values could apply.
+ *
+ * This CANNOT be done by simply not writing them in the styles mod above:
+ *  - `@expo/config-plugins`' `AndroidConfig.StatusBar.withStatusBar` is
+ *    registered by `withAndroidExpoPlugins`, i.e. AFTER every plugin listed in
+ *    `app.json`, so its `withAndroidStyles` mod runs last and re-adds
+ *    `android:statusBarColor`.
+ *  - Removing the `androidStatusBar` block from `app.json` does not stop it.
+ *    `expo-splash-screen`'s prebuild plugin back-fills
+ *    `androidStatusBar.backgroundColor` from the splash colour
+ *    (`withAndroidSplashScreen.js:61-67`), so `withStatusBar` would write an
+ *    OPAQUE `#FED6DC` status bar — worse than the transparent value it had.
+ *
+ * So the removal runs in the `finalized` mod, which the mod compiler sorts to
+ * the very end of the Android pass (`mod-compiler.js` `precedences`).
+ */
+function withoutDeprecatedSystemBarColors(config) {
+  return withMod(config, {
+    platform: 'android',
+    mod: 'finalized',
+    action: async (cfg) => {
+      const styles = path.join(
+        cfg.modRequest.platformProjectRoot,
+        'app/src/main/res/values/styles.xml'
+      );
+      if (!fs.existsSync(styles)) return cfg;
+
+      const before = fs.readFileSync(styles, 'utf8');
+      const after = before.replace(
+        /^[ \t]*<item name="android:(?:statusBarColor|navigationBarColor)">.*<\/item>[ \t]*\r?\n/gm,
+        ''
+      );
+      if (after !== before) fs.writeFileSync(styles, after);
+
+      return cfg;
+    },
+  });
+}
+
 module.exports = function withLaunchScreenFill(config, opts) {
-  return withLaunchScreenWindowBackground(withLaunchScreenDrawables(config, opts));
+  return withoutDeprecatedSystemBarColors(
+    withLaunchScreenWindowBackground(withLaunchScreenDrawables(config, opts))
+  );
 };

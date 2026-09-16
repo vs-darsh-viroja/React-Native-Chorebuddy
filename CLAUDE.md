@@ -2463,3 +2463,274 @@ Don't regress: the onboarding overlay owns a capture-phase swipe responder — d
 label's advance width first and drop the frame when the margin is under ~5%. The Home
 progress card's content is centred in the card on purpose; restoring the bare `top: 17`
 puts the bar back on the boundary.
+
+### 2026-09-16 — Play Console "deprecated APIs or parameters for edge-to-edge": the three call sites we own
+
+Play flagged bundle 5 (1.0) with two recommendations and one deadline item. Scoped
+to the edge-to-edge one at the user's direction; the other two are recorded at the
+bottom of this entry, NOT done.
+
+Three deprecated call sites, all deprecated in API 35 and therefore **no-ops on
+this app's target 36**:
+
+| where | what | action |
+|---|---|---|
+| `android/app/src/main/res/values/styles.xml` (`AppTheme`) | `android:statusBarColor`, `android:navigationBarColor` | removed |
+| `App.tsx:141` | `<StatusBar translucent backgroundColor="transparent" />` | props dropped, `style="dark"` kept |
+| same styles.xml | `android:enforceNavigationBarContrast` | **left alone** — see below |
+
+**Removing the theme colours changes nothing, and that is provable rather than
+hopeful.** Expo's `EdgeToEdgePackage` (`expo-modules-core`) calls React Native's
+`Window.enableEdgeToEdge()` from `MainActivity.onCreate`, and that function
+(`react-native/.../views/view/WindowUtil.kt`) assigns `statusBarColor =
+TRANSPARENT` and `navigationBarColor = TRANSPARENT` programmatically on every API
+level. The window is not created until after `onCreate` returns, so there is no
+frame in which the theme values could have applied — they were dead weight that
+only served to trip Play's scanner. (RN's own assignment is also a deprecated-API
+use, and is not ours to remove without an SDK upgrade — so the warning may not
+clear entirely.)
+
+**`androidStatusBar` was deleted from `app.json`, and the removal had to move into
+a `finalized` mod to survive prebuild.** Two things fight it:
+- `@expo/config-plugins`' `AndroidConfig.StatusBar.withStatusBar` is registered by
+  `withAndroidExpoPlugins`, i.e. AFTER every plugin in `app.json`, so its
+  `withAndroidStyles` mod runs last and re-adds `android:statusBarColor`.
+- Deleting the `androidStatusBar` block does not stop it. `expo-splash-screen`'s
+  prebuild plugin back-fills `androidStatusBar.backgroundColor` from the splash
+  colour (`withAndroidSplashScreen.js:61-67`) — confirmed with `npx expo config
+  --json`, which reports `{ backgroundColor: '#FED6DC' }` even with the block
+  gone. So `withStatusBar` would write an **opaque #FED6DC** status bar, worse
+  than the transparent value it replaced.
+
+So `plugins/withLaunchScreenFill.js` gained `withoutDeprecatedSystemBarColors`,
+a `withMod({ platform: 'android', mod: 'finalized' })` that strips both `<item>`s
+from `styles.xml` after every other mod. `mod-compiler.js`'s `precedences` sorts
+`finalized` last for Android, so nothing can re-add them. `windowLightStatusBar`
+is still set by this plugin, which is why dropping `androidStatusBar.barStyle`
+costs nothing.
+
+`enforceNavigationBarContrast` is written unconditionally by Expo's own
+`withEnforceNavigationBarContrast` prebuild plugin and is read back by
+`EdgeToEdgePackage`; removing it locally would be reverted by the next prebuild
+and would change nothing anyway (the attribute's default is `true`, which is what
+it is set to). Left as Expo's business.
+
+Verification: `npm run typecheck` passes. `:app:assembleDebug` succeeds, and the
+COMPILED `resources.arsc` was checked rather than the source XML — `aapt2 dump
+resources` now shows `style/AppTheme` with 5 items (`0x01010054` windowBackground,
+editTextBackground, `0x010104e0` windowLightStatusBar, `0x01010605`
+enforceNavigationBarContrast, colorPrimary) and **no `0x01010451`/`0x01010452`**
+(status/navigation bar colour), which the 2026-08-31 entry recorded as present.
+The `finalized` mod's regex was exercised against the pre-edit file shape.
+
+Verified on screen, on a freshly cold-booted Medium_Phone emulator (1080x2400,
+API 37, gesture nav): the system splash renders `#FED6DC` edge to edge — sampled
+at y=2 and at the bottom row, so both bar zones are covered with no band — then
+the launch artwork, then onboarding page 1, all full-bleed under a status bar
+whose icons are dark. `ReactNativeJS` logging is live (65 lines) and carries **no**
+`StatusBar backgroundColor is not supported with edge-to-edge enabled` /
+`translucent prop is ignored` warnings, which `expo-status-bar`'s
+`StatusBar.android.tsx` would emit for the props that were removed. The RNFirebase
+v22 namespaced-API warnings in that log are pre-existing.
+
+Housekeeping: the emulator's `/data` was 93% full and the install failed with
+`INSUFFICIENT_STORAGE`, so **`com.sc9.app` and `com.arbora.app` were uninstalled
+from the emulator** to make room. Those are other projects' test installs, not
+ChoreBuddy's; reinstall them from their own trees when needed.
+
+NOT done, both still open in Play Console:
+- **DEX/obfuscation 2%, "fix by Feb 2027".** R8 is off — `android/app/build.gradle`
+  reads `android.enableMinifyInReleaseBuilds` and nothing sets it, so
+  `minifyEnabled` is false (as the 2026-08-27 entry deliberately chose). Turning it
+  on needs keep rules for RNFB, Reanimated, react-native-iap/Nitro and the Expo
+  modules, plus a full device pass — it is not a config flip.
+- **Resizability / orientation.** `android:screenOrientation="portrait"` comes from
+  `app.json`'s `"orientation": "portrait"`; iOS is portrait-only too, and the
+  shared scaler is width-derived, so unlocking large screens is a port-scale job.
+
+Don't regress: never re-add `android:statusBarColor` / `android:navigationBarColor`
+to `AppTheme`, and never re-add `androidStatusBar` to `app.json` — it makes prebuild
+write an OPAQUE status bar. The `finalized` mod in `withLaunchScreenFill.js` is what
+makes the removal survive prebuild; do not fold it back into the styles mod, which
+runs before Expo's `withStatusBar`. `<StatusBar>` takes `style` only under
+edge-to-edge; `backgroundColor`/`translucent` are ignored and warn.
+
+### 2026-09-16 — R8 enabled (obfuscation 2% -> 91%, DEX 55.7 -> 18.0 MB), and why the portrait lock stays
+
+The two remaining Play Console items from bundle 5.
+
+## 1. "DEX code optimization is below our threshold" — FIXED
+
+R8 was off: `android/app/build.gradle:69` reads `android.enableMinifyInReleaseBuilds`
+and nothing set it, so `minifyEnabled` was false (the 2026-08-27 entry chose that
+deliberately). Enabled in BOTH places, because `android/` is gitignored and prebuild
+rewrites `gradle.properties`:
+
+- `android/gradle.properties` — `android.enableMinifyInReleaseBuilds=true` plus
+  `android.enableShrinkResourcesInReleaseBuilds=true`.
+- `app.json` — the same two flags on `expo-build-properties`, with the keep rules
+  passed through its `extraProguardRules` so a prebuild reproduces the whole setup.
+  `expo-build-properties` appends that string into `android/app/proguard-rules.pro`,
+  so the two copies must be kept in step (the file is the source; `app.json`'s copy
+  is everything below the `# ---` banner).
+
+**Almost nothing needed keeping, because the stack ships its own rules through
+`consumerProguardFiles`** — verified per library rather than assumed:
+`expo-modules-core` (keeps every `Module` subclass, `Record`, `SharedObject`,
+`Enumerable`, `ExpoView`), `react-native-reanimated`, `react-native-svg`,
+`react-native-iap` (`com.margelo.nitro.iap.**`), the React Native AAR, and the
+Firebase/Play Services/Play Billing artifacts. What we added:
+- `com.margelo.nitro.**` — Nitro core, which nothing else covers. Nitro resolves
+  HybridObjects from C++ by class and member NAME through JNI, and
+  react-native-iap's own `consumer-rules.pro` explicitly leaves
+  `com.margelo.nitro.modules.**` commented out "for downstream apps".
+- `-keepattributes SourceFile,LineNumberTable` + `-renamesourcefileattribute` so
+  Crashlytics traces stay readable; this project does not configure
+  `firebaseCrashlytics { mappingFileUploadEnabled }`, so without them the frames are
+  unresolvable.
+- `com.facebook.jni.**`, and `-keepclassmembernames class kotlinx.** { volatile <fields>; }`.
+
+**A keep rule written against a Maven groupId matches nothing.** The first pass had
+`-keep class io.github.hyochan.openiap.** { *; }` for OpenIAP, the Play Billing client
+under react-native-iap. That is the **groupId**; the package is `dev.hyo.openiap`, so
+the rule covered exactly one class. It was removed rather than corrected: the AAR
+carries its own `proguard.txt` keeping `dev.hyo.openiap.OpenIAP`, `.models.**` and
+`.listener.**`, and the library does not use kotlinx.serialization (checked inside
+the 1.3.28 AAR), so the remaining 258 classes are safe to rename. That first build
+was discarded and both artifacts rebuilt.
+
+**Results**, measured on the bundle rather than reported by the console:
+| | bundle 5 | bundle 6 |
+|---|---|---|
+| uncompressed DEX | 55.7 MB | **18.0 MB** (3 dex files) |
+| obfuscation | 2% | **91%** (23,246 of 25,611 classes renamed in `mapping.txt`) |
+| AAB | 133 MB | 121 MB |
+
+**It runs, and the risky part runs.** The release APK (same minify config, signed by
+the upload key `D2:BF:E1:E2:…:ED:0A`) was installed on the emulator and driven through
+all seven onboarding pages to the main paywall and the gift paywall. No `FATAL` /
+`ClassNotFound` / `NoSuchMethod` / `NoClassDefFound` anywhere in logcat, `Running "main"`,
+Firebase Auth + Remote Config initialised. Crucially **live Google Play prices loaded**
+(₹54.81/week yearly, ₹2,850/year, ₹590 weekly, and the gift screen's 49% discount
+computed from them) — that exercises react-native-iap -> Nitro -> OpenIAP -> Play
+Billing end to end, which was the whole reason R8 had been left off. Remote Config
+variants (join pill, Save 85%, "Continue For Free", close button) all applied.
+Real purchases and Google Sign-In were NOT exercised: completing either needs a real
+account. Sign-in should be fine — the upload key is registered (see the fingerprint
+table) — but it is the one path a minified build has not been proven on.
+
+`versionCode` 4 -> **6**. Play's highest is 5 (the pasted console listing shows
+"5.aab (1.0)" active), so 5 would be rejected and 4 doubly so.
+
+Artifacts: `android/app/build/outputs/bundle/release/app-release.aab` (121 MB,
+versionCode 6 / versionName 1.0) and the matching universal APK. **Keep
+`android/app/build/outputs/mapping/release/mapping.txt` (55 MB) for this build** —
+Play needs it (or a Crashlytics upload) to deobfuscate crash reports, and it is
+regenerated by every build.
+
+## 2. "Remove resizability and orientation restrictions" — NOT done, deliberately
+
+Tested rather than argued, on the emulator resized with `wm size`/`wm density`:
+
+- **Tablet portrait already works.** 1600x2560 @ 320dpi = 800x1280dp (sw800dp):
+  `isPad` engages, `boosted` = 1.493, and the window is **857 design units** tall
+  against the 375x825 basis, so onboarding renders correctly and full-bleed.
+- **Landscape is broken, and unlocking the manifest would ship it that way.**
+  2560x1600 = 1280x800dp: the title card is almost entirely hidden behind the
+  Get Started CTA and the page dots sit on the artwork. The arithmetic says why —
+  `s()` is width-derived, so landscape raises `boosted` to **2.389** (everything
+  ~60% BIGGER than on a phone) while the window is only **335 design units** tall
+  against the 825 the design needs, i.e. 41%.
+
+Two things bound the fix, so this is a port-scale job and not a manifest flip:
+- `src/theme/scaling.ts:3` reads `Dimensions.get('window')` at MODULE scope, and there
+  are **2,644 `s()` call sites across 45 module-level `StyleSheet.create` blocks**.
+  Those objects are computed once at import, so even a correct landscape design would
+  not re-layout on rotation without moving the whole styling layer onto hooks.
+- Activity recreation does not rescue it: `ReactHost` lives in `MainApplication` and
+  survives `MainActivity`, so the JS context — and the frozen dimensions — persist
+  across a configuration change. Removing `orientation|screenSize|screenLayout` from
+  `configChanges` would not help.
+
+A tempting one-liner — `scale = min(width/baseW, height/baseH)` — was considered and
+rejected: it would shrink the whole app ~20% on a 360x640dp phone (width ratio 0.96 vs
+height ratio 0.776), undoing every small-phone tuning pass in this file. Gating it to
+landscape only leaves content scaled tiny in the middle of a wide window while
+width-anchored elements (backgrounds, the tab bar, `windowWidth - 2*s(15)` cards)
+stretch full width — still not a design.
+
+So the portrait lock stays: iOS is portrait-only too, and on a large screen the app is
+letterboxed, which is the correct outcome for a phone-shaped design. Note that
+targetSdk 36 means the system can resize the activity on a large screen regardless of
+the lock — the landscape screenshot above is what that looks like today.
+
+Noticed while auditing the release APK, NOT changed (outside this scope and it needs
+its own build + Play declaration check): the manifest still requests
+`android.permission.ACCESS_ADSERVICES_AD_ID`, which arrives with a newer
+play-services-measurement. It is a different permission from the
+`com.google.android.gms.permission.AD_ID` the 2026-08-27 pass blocked, and it can also
+trigger Play's advertising-ID declaration. The app has no ads, so it is a candidate for
+`blockedPermissions`.
+
+Don't regress: R8 is on — any new native dependency that resolves classes reflectively
+or from JNI needs a keep rule, and the release build must be SMOKE-TESTED to the paywall
+(live Play prices are the signal that the billing chain survived) before upload, not just
+compiled. Keep `android/gradle.properties` and `app.json`'s `expo-build-properties` block
+in step, and keep `proguard-rules.pro` in step with `extraProguardRules`. A keep rule must
+name the PACKAGE, never the Maven groupId. Save each release's `mapping.txt`. `versionCode`
+must exceed Play's highest — it was 5, the repo is now 6.
+
+### 2026-09-16 (same day, follow-up) — `minifyEnabled` alone does not OPTIMIZE: AGP's default ProGuard file carries `-dontoptimize`
+
+The user pointed at the Play Console detail rows — App optimization **Low**,
+Optimization percentage **-**, Obfuscation **2%**, Shrinking **-**, R8 configuration
+**-** — and asked whether the fix covered them. It covered two of the three, and the
+gap was real.
+
+Play reports optimization, obfuscation and shrinking SEPARATELY. Turning on
+`minifyEnabled` + `shrinkResources` delivered obfuscation and shrinking, but the RN/Expo
+template points R8 at AGP's `getDefaultProguardFile("proguard-android.txt")`, and that
+file contains **`-dontoptimize`** — found in this project's own R8 dump at
+`android/app/build/outputs/mapping/release/configuration.txt:159`, with AGP's comment
+beside it: *"you cannot just include optimization flags in your own project
+configuration file; instead you will need to point to the proguard-android-optimize.txt
+file"*. `-dontoptimize` cannot be cancelled by a later rule, so the only fix is to stop
+including that file.
+
+New `plugins/withR8Optimize.js` (a `withAppBuildGradle` mod) swaps it for
+`proguard-android-optimize.txt`, registered in `app.json`; the same edit is applied
+directly in `android/app/build.gradle` because prebuild would wipe the signing block.
+`expo-build-properties` has no knob for the default ProGuard file, hence a plugin.
+
+Effect of the optimize pass ON TOP of the shrink/obfuscate build:
+
+| | bundle 5 (live) | minify only | + optimize |
+|---|---|---|---|
+| uncompressed DEX | 55.7 MB | 18.0 MB | **11.9 MB** |
+| dex files | — | 3 | **2** |
+| classes in mapping | — | 25,611 | **14,075** (class merging/inlining) |
+| `-dontoptimize` in R8 config | — | present | **absent** |
+
+Verified on the emulator after the optimize pass, because optimization is the risky R8
+phase (inlining and horizontal class merging can break reflective lookups that shrinking
+alone leaves intact): release APK installed, all seven onboarding pages, main paywall,
+**live Google Play prices still loading** (₹54.81/week yearly, ₹2,850/year, ₹590 weekly)
+and Remote Config variants still applied; no `FATAL`/`ClassNotFound`/`NoSuchMethod`/
+`NoClassDefFound` in logcat. Onboarding page 1 was diffed pixel-for-pixel against the
+shrink-only build: **908 of 2,592,000 pixels differ (0.035%), and every one of them is
+inside bbox (44,16)-(835,47) — the status-bar clock and icons.** App content is
+byte-identical, which is the evidence that none of this touches the design.
+
+**R8 configuration / "Upgrade to AGP version 9.0" is NOT fixable here.** React Native
+0.81.5 pins AGP 8.11.0 (`node_modules/react-native/gradle/libs.versions.toml:9`) and the
+wrapper is Gradle 8.14.3; AGP 9 needs Gradle 9, which this build already warns it is
+incompatible with. That row stays flagged until Expo/RN ship AGP 9 support.
+
+**Nothing on the Play Console page changes until bundle 6 is uploaded** — those figures
+are properties of the uploaded artifact (bundle 5), not of the repo.
+
+Don't regress: `minifyEnabled` is only two thirds of Play's optimization score — the
+release build must also use `proguard-android-optimize.txt`, or "Optimization percentage"
+stays `-`. Check `configuration.txt` for `-dontoptimize` after any change to the ProGuard
+setup, and re-run the paywall smoke test after ANY change to the optimize pass, not just
+after enabling minification.

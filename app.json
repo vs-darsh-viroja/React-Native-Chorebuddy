@@ -9,7 +9,7 @@
     "icon": "./assets/images/app-icon.png",
     "android": {
       "package": "chores.tracker.chorebuddy",
-      "versionCode": 4,
+      "versionCode": 6,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -49,12 +49,16 @@
         }
       ],
       "./plugins/withQuickActionIcons",
+      "./plugins/withR8Optimize",
       "expo-notifications",
       [
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "minSdkVersion": 26,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "# ---------------------------------------------------------------------------\n# R8 is ENABLED for release builds (android.enableMinifyInReleaseBuilds=true in\n# android/gradle.properties, 2026-09-16) to clear Play Console's \"DEX code\n# optimization is below our threshold\" item.\n#\n# Most of the stack brings its own rules through `consumerProguardFiles` and does\n# NOT need anything here: expo-modules-core (keeps every `Module` subclass,\n# `Record`, `SharedObject`, `Enumerable`, `ExpoView`), react-native-reanimated,\n# react-native-svg, react-native-iap (`com.margelo.nitro.iap.**`), the React\n# Native AAR itself, and the Firebase/Play Services/Play Billing artifacts.\n# Only what is NOT covered belongs below.\n# ---------------------------------------------------------------------------\n\n# Readable Crashlytics stack traces. Without these the obfuscated frames are\n# only resolvable through the mapping file, and `firebaseCrashlytics\n# { mappingFileUploadEnabled }` is not configured in this project.\n-keepattributes SourceFile,LineNumberTable\n-renamesourcefileattribute SourceFile\n\n# react-native-reanimated (kept from the original file; its own consumer rules\n# cover the library, these cover the host-side lookups).\n-keep class com.swmansion.reanimated.** { *; }\n-keep class com.facebook.react.turbomodule.** { *; }\n\n# react-native-nitro-modules \u2014 the Play Billing bridge under react-native-iap.\n# Nitro resolves HybridObjects from C++ by class and member NAME through JNI, so\n# nothing in the core package may be renamed or removed. react-native-iap ships\n# rules for `com.margelo.nitro.iap.**` but nothing covers Nitro core, and its\n# `consumer-rules.pro` explicitly leaves `com.margelo.nitro.modules.**` to the\n# app (it is commented out there).\n-keep class com.margelo.nitro.** { *; }\n\n# OpenIAP (the Google Play Billing client react-native-iap delegates to) needs\n# NOTHING here: its AAR ships a `proguard.txt` that keeps `dev.hyo.openiap.OpenIAP`,\n# `dev.hyo.openiap.models.**` and `dev.hyo.openiap.listener.**`, and the library\n# does not use kotlinx.serialization, so the rest is safe to rename. Note the\n# Maven groupId (io.github.hyochan.openiap) is NOT the package name (dev.hyo.openiap)\n# \u2014 a keep rule written against the groupId matches nothing.\n\n# Kotlin coroutines / serialization internals used across the native modules.\n-keepclassmembernames class kotlinx.** { volatile <fields>; }\n\n# Hermes / JSI entry points that RN looks up by name.\n-keep class com.facebook.jni.** { *; }\n"
           }
         }
       ],
@@ -64,10 +68,6 @@
       "eas": {
         "projectId": "74467cdc-e59f-4f92-9268-b6b6b632ce9e"
       }
-    },
-    "androidStatusBar": {
-      "barStyle": "dark-content",
-      "translucent": true
     }
   }
 }

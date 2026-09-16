@@ -138,5 +138,5 @@ export default function App() {
   }, [loaded, error]);
 
   if (!loaded && !error) return null;
-  return <SafeAreaProvider><StatusBar style="dark" translucent backgroundColor="transparent" /><AppProvider><PaywallConfigProvider><GiftTimerProvider><PurchaseProvider><AuthProvider><HouseholdProvider><ChoreProvider><MissedEventBackfill /><NotificationSync /><Gate /></ChoreProvider></HouseholdProvider></AuthProvider></PurchaseProvider></GiftTimerProvider></PaywallConfigProvider></AppProvider></SafeAreaProvider>;
+  return <SafeAreaProvider><StatusBar style="dark" /><AppProvider><PaywallConfigProvider><GiftTimerProvider><PurchaseProvider><AuthProvider><HouseholdProvider><ChoreProvider><MissedEventBackfill /><NotificationSync /><Gate /></ChoreProvider></HouseholdProvider></AuthProvider></PurchaseProvider></GiftTimerProvider></PaywallConfigProvider></AppProvider></SafeAreaProvider>;
 }
