@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Reanimated, { Easing as ReEasing, useAnimatedProps, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Images } from '@/constants/assets';
-import { colors, font, isPad, isSmallPhone, s } from '@/theme';
+import { colors, font, isBigPad, isPad, isSmallPhone, s } from '@/theme';
 import { shadow, spring, useFloat } from './parts';
 import { AnimatedAppImage, AppImage } from '@/components/AppImage';
 
@@ -51,14 +51,16 @@ export function OnboardingProgressView({ isActive }: { isActive: boolean }) {
 
   return (
     <View style={styles.root}>
-      <View style={styles.headRow}>
-        <ProgressCard ring={ring} />
-        <AnimatedAppImage source={Images.bunnyImg1} resizeMode="stretch" style={[styles.bunny, { transform: [{ translateY: bunnyFloat }] }]} />
-      </View>
-      <View style={styles.taskStack}>
-        <View style={styles.taskRowLeft}><TaskCard source={Images.task1Img} shown={tasks[0]} /></View>
-        <View style={styles.taskRowCenter}><TaskCard source={Images.task2Img} shown={tasks[1]} /></View>
-        <View style={styles.taskRowRight}><TaskCard source={Images.task3Img} shown={tasks[2]} /></View>
+      <View style={styles.designBlock}>
+        <View style={styles.headRow}>
+          <ProgressCard ring={ring} />
+          <AnimatedAppImage source={Images.bunnyImg1} resizeMode="stretch" style={[styles.bunny, { transform: [{ translateY: bunnyFloat }] }]} />
+        </View>
+        <View style={styles.taskStack}>
+          <View style={styles.taskRowLeft}><TaskCard source={Images.task1Img} shown={tasks[0]} /></View>
+          <View style={styles.taskRowCenter}><TaskCard source={Images.task2Img} shown={tasks[1]} /></View>
+          <View style={styles.taskRowRight}><TaskCard source={Images.task3Img} shown={tasks[2]} /></View>
+        </View>
       </View>
     </View>
   );
@@ -116,6 +118,18 @@ function ProgressCard({ ring }: { ring: SharedValue<number> }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, paddingTop: s(isSmallPhone ? 44 : 76.68) },
+  /**
+   * iOS `.scaleEffect(isSmalliphone ? 0.82 : (isBigIpadDevice ? 0.8 : 1), anchor: .top)`
+   * on the card+tasks VStack (`OnboardingProgressView.swift:49`).
+   *
+   * This was the one page whose scale never got ported — every sibling page has
+   * it (Zone/Calendar/Avatar/Streak all carry the 0.8) — which is why on a short
+   * screen the third task card ran underneath the "Keep Your Home Organized"
+   * title. Note the scale sits INSIDE the root's top padding, exactly as on iOS,
+   * where `.padding(.top,)` is applied after `.scaleEffect`: the 44 clearing the
+   * status bar is not scaled, only the art below it.
+   */
+  designBlock: { transform: [{ scale: isSmallPhone ? 0.82 : isBigPad ? 0.8 : 1 }], transformOrigin: 'top center' },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: s(197), gap: s(isPad ? 64.81 : 34.81) },
   bunny: { width: s(124), height: s(194) },
   taskStack: { marginTop: s(37), gap: s(11) },

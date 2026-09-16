@@ -2010,3 +2010,456 @@ Don't regress: ANY Text sharing a row with an icon needs `lineHeight`
 (fontSize × 1.193) + `includeFontPadding: false`. Matching the iOS spacing
 tokens is not enough — Android centres the padded box, so the glyphs drift even
 when every token is right.
+
+### 2026-09-09 — Onboarding page 1 ran under its title: iOS's `scaleEffect` was never ported, and the "small device" flag was measuring the wrong axis
+
+Reported with a screenshot of the 720x1280 emulator (360x640dp): the third task
+card on "Keep Your Home Organized" sat behind the title. Two causes.
+
+**1. The page-1 art scale was missing.** `OnboardingProgressView.swift:49` reads
+`.scaleEffect(isSmalliphone ? 0.82 : (isBigIpadDevice ? 0.8 : 1), anchor: .top)`
+on the card+tasks VStack, with `.padding(.top, isSmalliphone ? 44 : 76.68)`
+applied AFTER it so the top pad is not scaled. The RN port took the padding and
+dropped the scale — every sibling page has its equivalent (`designBlock`/`canvas`
+carry iOS's 0.8), so page 1 was the only one rendering at full size on a short
+screen. Its art needs 44 + 430 = 474 design units where the copy/dots/CTA overlay
+left ~431. Ported as a `designBlock` wrapper inside the root's padding, matching
+iOS's order of operations.
+
+**2. `isSmallPhone`/`isSmallDevice` were reading raw dp height, which on Android
+says nothing about fit.** `s()` is width-derived, so an iOS-derived vertical stack
+occupies `height / boosted` DESIGN units of room — that is the number that decides
+whether it collides with a window-anchored overlay, and it is a function of aspect
+ratio, not of dp height. On iOS the two forms agree on every device (SE 375x667 →
+667 units, small both ways; iPhone 15 393x852pt → 813 units, big both ways), which
+is why iOS gets away with `screenSize.height < 810`. On Android they diverge: a
+1440x2880 phone is 411x823dp → only **751** design units, yet `823 >= 810` read as
+a big phone and switched off every tightening — the exact condition that puts the
+art under the title. Both flags now evaluate `designHeight < 812 / < 810` (new
+`designHeight` export), keeping iOS's own thresholds on the axis that governs.
+This is the same mismatch SC9 papered over by raising its Android threshold to
+900dp (`SC9/src/theme/scaling.ts`); measuring in design units fixes it without a
+platform-specific constant. Checked: emulator 640dp → 667 units (small), moto g35
+432x960dp → 833 units (not small, unchanged), Pixel-2-XL-class 823dp → 751 units
+(now correctly small).
+
+**3. The overlay was taller than iOS's** — the title/subtitle had no pinned line
+box, so Android's `includeFontPadding` added ~10 design units across the two-line
+title plus two-line subtitle, and every unit the overlay grows is a unit taken off
+the art above it. Pinned to fontSize x 1.193 with `includeFontPadding: false`
+(seventh occurrence of the standing rule). This is also what pulled page 5's
+marquee clear of its title.
+
+Verification: `npm run typecheck` passes, and all seven pages were walked on the
+running emulator (720x1280, gesture nav) with screenshots. Page 1: last task card
+ends at 750px, title starts at 830px. Page 5: the second marquee row now ends
+above the title inside its fade, matching iOS's own geometry at 0.8. Page 2 clears
+by ~11 units, pages 4 and 6 have room to spare. Page 3's fourth task card still
+sits behind the title, faded — that is iOS's behaviour too (its mask is fully
+clear only by 439 units against an overlay top of ~445 on an SE), so it was left
+alone.
+
+Note for future device work: Android restores the onboarding pager's scroll offset
+across a process restart, so a relaunched app can come back on page 4 rather than
+page 0. And drive swipes from x=600 inward, not x=700 — on a 720px-wide screen the
+last ~20px is the predictive-back gesture zone and the swipe leaves the app.
+
+Don't regress: page 1's `designBlock` scale is iOS's 0.82 and must stay inside the
+root's top padding. The small-device flags are measured in DESIGN units — never
+"simplify" them back to `Dimensions.height < 810`, which is only correct for the
+aspect ratios iOS ships. Anything an onboarding page's art has to clear is the
+copy overlay, so its Texts must keep their pinned line boxes.
+
+### 2026-09-09 — Owner card on the Assign page: nothing shared a centre line
+
+Reported on the small emulator: in page 4's purple profile card, "not even a
+single content is at center and equal position". Measured on device rather than
+eyeballed — every figure below is in design units within the card's own
+330x104.3 box (card centre 52.15):
+
+| element | before | after |
+|---|---|---|
+| avatar white ring | 22.14 .. 95.05, centre 58.67 | 15.70 .. 89.27, centre **52.48** |
+| "Alisa" ink | 30.60 .. 47.53 | 22.86 .. 39.79 |
+| "Home Owner" pill box | 71.61 .. 98.31 | 54.11 .. 81.46 |
+| text-block ink centre | 64.54 | **52.16** |
+
+Two independent causes.
+
+**1. The name's line box, and this one is a parity bug (fixed on every device).**
+SF Pro Rounded's glyph bounding box is **1.8472 em** (`head.yMax 2584 /
+yMin -1199` at upm 2048) against a line box of **1.1934 em** (`hhea`
+1950/-494) — the surplus is diacritic headroom this app never renders. Android's
+`includeFontPadding` reserves the whole bounding box, so the 24.6pt name
+occupied 45.4 design units where SwiftUI gives 29.4, pushing the pill 17 units
+down: its bottom sat 6 units off the card's edge where iOS leaves 22.8. The
+arithmetic confirms the mechanism exactly — predicted pill top
+16.4 + 45.44 + 8.6 = 70.4 against 71.6 measured, and the name's baseline at
+16.4 + yMax/upm x 24.6 = 47.4 against 47.53 measured. Pinning `lineHeight` to
+`NAME_LINE` (24.6 x 1.1934) with `includeFontPadding: false` restores iOS's box,
+and iOS's own 16.4 offset then lands the name+pill ink optically centred
+(52.16 against 52.15) — so the offsets were never wrong, only the box.
+
+Note this is the FIRST occurrence of this rule where the culprit is the bounding
+box rather than the ~1.3x line box seen elsewhere: at 24.6pt the inflation is 16
+design units, not 4, because SF Pro Rounded's `yMax/yMin` are unusually generous.
+
+**2. The avatar really does sit low, on iOS too — lifted on small screens only,
+at the user's request.** iOS places the 111x105 avatar at y 6.4 inside a
+104.3-tall card (`OnboardingAvatarView.swift:140-143`), so it hangs 7.1 units
+past the bottom edge and its ring centre falls 6.6 below the card's. `AVATAR_LIFT`
+(6.6) raises the avatar and the crown — the crown is anchored to the ring, not to
+the card, so it has to move with it. Derived from the asset, not eyeballed:
+`avatarIcon1.png` is 332x313 with its white ring at y 46..266, so the ring centre
+sits 52.32 down a 105-tall render and wants to be at 52.15. As a side effect the
+art's baked drop shadow now fits inside the card instead of overhanging it.
+
+Gated on `isSmallPhone` because the request was scoped to small devices. The
+misalignment is scale-invariant — it is identical at scale 1 on a big phone — so
+if it should apply everywhere, `AVATAR_LIFT` becomes an unconditional 6.6.
+
+Verification: `npm run typecheck` passes; the table above is measured off device
+screenshots before and after (720x1280 emulator, page 4 reached by swiping).
+Fast Refresh did NOT pick this up — module-scope constants changed, so it took an
+explicit Reload from the dev menu (`adb shell input keyevent 82`, then tap
+Reload; Metro's `/reload` endpoint did nothing).
+
+Don't regress: the pill's position comes from the name's pinned line box — never
+"fix" it by moving `ownerText`'s 16.4 offset, which is already correct. The
+avatar lift is a deliberate divergence from iOS; do not restore iOS's bare 6.4 on
+small screens.
+
+### 2026-09-09 — Gift paywall on a short screen: iOS's four small-iPhone values were never ported
+
+Reported with a screenshot of the emulator: the Collect Gift button covered the
+countdown card's Hours/Minutes/Seconds labels and the price row was jammed off
+the bottom edge, half behind the CTA.
+
+**iOS already handles this screen explicitly.** `GiftPaywallView.swift:40-76`
+varies four values on `isSmalliphone` — the content VStack's top padding
+(185 vs 263), the spacing between its three blocks (30 vs 47), and the gift
+artwork's frame (213x180 vs 272x230) and top padding (18 vs 85). The RN port had
+none of them: it used the big-phone spacing on every device, laid the artwork out
+in FLOW with a `marginTop: 42` and then pulled the headline back up with
+`marginTop: -38`, and pinned the CTA to the window with `bottom: max(38, inset+16)`.
+On 667 design units of height that put the card at 453.8..600.8 and the CTA at
+574..626 — a 27-unit collision — while the price row landed at 618.8..677.8, i.e.
+11 units past the bottom of the screen.
+
+Restructured to iOS's own model: one content column carrying `HEAD_TOP` and
+`BLOCK_GAP`, the artwork as an absolute overlay ABOVE that column (iOS draws it
+after the VStack, so the copy's position never depends on it), and the CTA at
+iOS's 26 bottom padding with the standard nav-bar lift. iOS's 272x230 frame is the
+asset's exact aspect (`giftImg.png` is 816x691 = 1.1809), so `resizeMode="stretch"`
+matches `.resizable()` without distortion and the old `contain`-inside-an-oversized-box
+arrangement goes away with the -38 hack.
+
+**Every text on the screen also needed its line box pinned**, and here it is the
+single biggest term. Android reserves SF Pro Rounded's 1.8472 em GLYPH bounding
+box (`head.yMax 2584 / yMin -1199`, upm 2048) rather than its 1.1934 em line box
+(`hhea` 1950/-494) — on the 60pt discount headline that is **39 extra design
+units by itself**, and another 17 across the subtitle and price rows. Without the
+pin, iOS's spacing values would still have overflowed a short screen.
+
+Verified on device (720x1280 emulator, 667 design units, gesture nav): content
+ends at ~544 units with the CTA measured at 573.4..625.0, so the button clears the
+price row by 29 units and the whole screen fits with nothing scrolled or hidden;
+the countdown labels are all visible. `npm run typecheck` passes. Big-screen
+arithmetic re-checked at 833 units: content ends at 656 against a CTA top of 740.
+
+Two deliberate deltas recorded rather than changed: this screen keeps its RN top
+purple wash (iOS's gift paywall has a flat `appBackground`), and it keeps `s()`
+where iOS uses `scaledValueFlat` — identical on every phone, so it only means the
+screen is 1.4x larger on iPad than iOS's, which no other part of this port
+special-cases either. Also unchanged, since the report was about fit: iOS paints
+the discounted price in `appText` with a 28x28 arrow and a gradient card fill,
+where this port uses purple, a 65x28 arrow and a bordered card.
+
+Don't regress: this screen's vertical budget has no slack on a short phone — the
+four `HEAD_TOP`/`BLOCK_GAP`/`GIFT_*` constants and the pinned line boxes are what
+make it fit, and the artwork must stay an absolute overlay so the copy cannot be
+pushed by it.
+
+### 2026-09-09 — Notification permission screen: an invented image height and a background sized against the padding box
+
+Reported on the small emulator: the Enable/No Thanks buttons were nowhere on
+screen, and the `appBg` wash stopped short of the right edge with a visible
+vertical seam. Two unrelated causes, both in the port rather than in iOS.
+
+**1. `height: s(260)` on the reminder artwork was invented, and it was the whole
+overflow.** iOS constrains that image by WIDTH only —
+`.scaledToFit().frame(maxWidth: isIPad ? 500 : 333)`
+(`NotificationPermissionView.swift:38-42`) — so its height falls out of the
+asset's aspect. `iphoneReminerImg` is **999x246** (aspect 4.06), so at 333 wide
+the art is **82** design units tall; the port's 260-tall box with
+`resizeMode="contain"` therefore reserved **178 units of empty space**. The
+height now comes from `Image.resolveAssetSource` rather than a constant, so it
+cannot drift if the artwork is replaced (the iPad asset is 1599x246 → 77 units at
+500 wide).
+
+**2. The background was a child of the padded view.** `bg` was
+`StyleSheet.absoluteFillObject` + `width/height: '100%'` inside the root that
+carries `paddingHorizontal: s(25)` and the top/bottom padding — and a percentage
+resolves against the parent's PADDING box, so the image rendered ~50 design units
+narrower and several hundred shorter than the window, leaving the pale
+`colors.background` visible past its right edge. The image is now a sibling of a
+new padded `content` view inside an unpadded root, so `100%` unambiguously means
+the window. Also switched `cover` → `stretch`, matching iOS's `.resizable()` with
+no aspect ratio (the same correction made for the gift banner on 2026-08-27).
+
+**3. Line boxes pinned** (eighth occurrence): Android's `includeFontPadding`
+reserves SF Pro Rounded's 1.8472 em glyph bounding box on each paragraph's first
+and last line, which added 22 units to the 34pt two-line title and 35 across the
+three 18pt paragraphs. The title's `lineHeight` is `34 x 1.1934 + 4`, carrying
+iOS's `.lineSpacing(4)`; the spacer also gained `minHeight: s(20)` to match iOS's
+`Spacer(minLength: 20)`.
+
+Tally on 667 design units of height: 55 + 89.2 title + 45 + 137.4 paragraphs + 34
++ 82 art + 20 spacer + 119 buttons + 41 bottom = 622.6, i.e. it fits with 44
+units of slack. No small-device branch is needed here, and iOS has none.
+
+Verified on device (720x1280 emulator booted from the `Small_Phone` AVD, 667
+design units, gesture nav), measured rather than eyeballed and matching the
+prediction to within a unit: primary CTA 506.8..558.3 DU (predicted top 507),
+secondary 574.0..625.5 (predicted 574..626), bottom gap 41.1 = `max(s(40),
+insets.bottom + s(16))`; title ink pitch 44.8 against the pinned 44.58, paragraph
+pitch 21.9 against 21.48. Background: the leftmost and rightmost pixels of rows
+60/150/250/350 are now identical and no vertical seam remains. `npm run typecheck`
+passes.
+
+The screen sits behind sign-in and household setup, so verification used a
+temporary `return <NotificationPermissionView …/>` at the top of `gateContent()`.
+**It has been reverted** — `git diff App.tsx` is empty and a `BYPASS` grep is
+clean. The RNFirebase v22 namespaced-API deprecation warnings that LogBox shows
+on this screen come from `PaywallConfig`'s `getNumber`/`getBoolean`/`getString`
+reads and are pre-existing, unrelated to this change.
+
+Don't regress: the reminder artwork's height is derived from the asset — never
+re-add a constant. A percentage-sized `absoluteFill` child resolves against its
+parent's PADDING box, so a full-bleed background must be a sibling of the padded
+content, not a child of it.
+
+### 2026-09-09 — Add Chore on a short screen: the frequency rows overflowed their fixed height, and every sheet card was an inset short
+
+Reported with two screenshots from the small emulator: on step 3 the frequency
+rows ran into each other and the card was cut, and the calendar sheet's Done
+button was jammed against the month card.
+
+**1. The frequency rows overflow their own fixed height — Android only.** iOS's
+`freqRow` is `.frame(height: 56)` (`AddChoreView.swift:1577-1617`) and the RN port
+carries that exactly, along with iOS's regular-14 title and regular-12 subtitle.
+But neither Text pinned its line box, so Android reserved SF Pro Rounded's
+1.8472 em glyph bounding box on each paragraph's first and last line:
+
+| row | content height, unpinned | pinned | row |
+|---|---|---|---|
+| 1-line subtitle (One Time, Daily, Custom) | 52.0 | 35.0 | 56 |
+| 2-line subtitle (Specific Days, Monthly) | **66.4** | 49.4 | 56 |
+
+So the two wrapping rows overflowed their fixed 56 by 10.4 and, because the row
+is `alignItems: 'center'`, spilled 5.2 into the row above and below — which is
+the collision in the screenshot. iOS wraps that subtitle too (212 units of copy
+width) and fits at 49.4, so this was purely the Android text metric.
+
+**2. Everything else on the screen was inflating too.** Pinned all 32 `Text`
+styles in `AddChoreView` and 12 in `AddChoreSheets`: `pageTitle` alone was 14.3
+units over, `pageSubtitle` 9.2, `stepLabel` 8.5 — about 32 units of vertical room
+recovered on every step before the card even starts, plus `cardLabel`/`cardHint`
+per card. The five **TextInput** styles (`searchInput`, `fieldInput`,
+`subtaskInput`, `noteInput`, `searchField`) were deliberately left alone: a
+`lineHeight` on an Android TextInput can shift the text inside its box, they sit
+in fixed-height field boxes so they do not inflate the page, and they were not
+device-verifiable in this pass.
+
+**3. Sheet cards were `insets.bottom` shorter than iOS's, in content terms.** iOS
+sizes these sheets as a fraction of the screen (`617/812`, or `0.78` for the
+calendar) and gets that whole box for content, because its home-indicator zone is
+drawable. `BottomSheet` applied `paddingBottom: insets.bottom` INSIDE the same
+box, so Android's content area was 25 design units smaller on gesture nav (~50
+against a three-button bar). The calendar sheet needs 503 of iOS's 520, so on
+Android it had 495 and overflowed — Done ended up flush against the month card.
+The card now measures `height + insets.bottom`; the extra strip extends behind
+the opaque navigation bar, where the card is flat background colour anyway. It
+can only ever make a sheet taller, so no existing sheet can be squeezed by it.
+
+Verified on device (720x1280 emulator, 667 design units, gesture nav), by walking
+the wizard to step 3 and opening the sheet. Frequency rows measure a
+divider-to-divider pitch of **56.77** design units (56 + the 1px divider) on both
+the 1-line and the 2-line rows — i.e. exactly iOS's fixed height, no overflow.
+Calendar sheet: card 539.6 tall, month card 205.2..520.8 (315.6 — matching the
+pinned prediction of 315.4), Done 559.9..609.9 with a **39.1**-unit gap above it
+and 56.8 below, where the report had ~0 above. `npm run typecheck` passes.
+
+Step 3 still scrolls on a short screen. That is iOS's behaviour too — there is no
+`isSmalliphone` anywhere in `AddChoreView.swift` or its sheets — and the ~32 units
+recovered above plus the un-collided rows are what the report was actually about.
+
+Verification again needed a temporary `return <AddChoreView …/>` at the top of
+`gateContent()` (the screen is behind sign-in and household setup); the zone and
+preset catalogs are local constants, so the wizard walks without a household.
+**It has been reverted** — `git diff App.tsx` is empty and a `BYPASS` grep is
+clean.
+
+Don't regress: a fixed-height row is not protection against Android's font
+padding — the content inside it still inflates and spills over the neighbours, so
+every Text in one needs its line box pinned. And `BottomSheet`'s card height is
+`height + insets.bottom` on purpose: do not "simplify" it back, or every
+fraction-height sheet loses a navigation bar's worth of content area.
+
+### 2026-09-09 — Stats overview label wrapped to "Skippe / d", and Overview's pager was scrolling by the wrong width
+
+Two reports from the small emulator, unrelated to each other.
+
+**1. "Skipped" does not fit iOS's 35-unit stat column on Android.** iOS's
+`overviewStat` is `.frame(width: 35)` with a regular-10 label
+(`StatsView.swift:461-472`) and the port carried both exactly. The font's own
+advance table puts "Skipped" at **34.48** units at 10pt, so SwiftUI fits it with
+half a unit to spare — Android lays it out slightly wider and broke the word
+across two lines.
+
+`numberOfLines={1}` alone was NOT enough, and that is worth recording because it
+looked like it should be: probed on device at 35/36/37/38 units, **35 ellipsizes
+to "Skipp..."** and 36 is the first width that renders the whole word. So the
+column really is a unit too narrow here, not merely a wrap-policy problem. It is
+now 37 (a unit of margin over the measured minimum) with the gap trimmed 25 → 22,
+so the three columns still total exactly iOS's 155 and the flexible name column
+beside them is untouched. `numberOfLines={1}` stays as the guard: the column is
+fixed, so an even wider label must clip rather than stack.
+
+**2. Overview's segment pager used two different page widths.** The pager lives
+inside the list card, which is inset `s(15)` either side, so `pagingEnabled` snaps
+to multiples of the card's INNER width — but `scrollTo` and the momentum-end index
+divided by the full window `width`. Tapping a segment therefore scrolled `s(30)`
+(~58px here) past the page boundary, and the next segment's rows showed through at
+the card's right edge: the stray red crosses on the empty Skipped page in the
+report. One `pageWidth = width - s(30)` now drives the page style, the programmatic
+scroll and the index. Note this was never small-device-specific — the error is
+~30 design units on every device.
+
+Also pinned the line boxes on all 16 `Text` styles in `StatsView` and all 7 in
+`OverviewView` (no TextInputs in either file), per the standing rule.
+
+Verified on device (720x1280 emulator): the Skipped page is now clean — an ink
+scan of the card's right quarter finds only the 12 antialiasing pixels of its two
+rounded corners — and a swipe lands exactly on Missed with the thumb tracking and
+the rows flush to the card's left edge. The label widths are from the on-device
+probe above rather than arithmetic. `npm run typecheck` passes.
+
+Both verifications used a temporary bypass at the top of `gateContent()` (an
+`OverviewView` with fabricated route params, then a four-cell width probe).
+**Both are reverted** — `git diff App.tsx` is empty and a `BYPASS` grep is clean.
+
+Don't regress: a fixed-width column sized from iOS's tokens can be a unit short on
+Android even when the font's advance table says it fits — probe the real rendered
+width before trusting the arithmetic, and keep the 37/22 pair so the block still
+sums to iOS's 155. A horizontal pager nested inside an inset card has ONE page
+width; never mix it with the window width.
+
+### 2026-09-15 — QA sheet bugs 4-10 (Android): four real defects, three already fixed
+
+Worked the Android rows of `BS of chorebuddy.xlsx` (bugs 4-10; the iOS rows 1-3 and
+the suggestions block were out of scope). The QA screenshots are Google Drive links
+and all seven download without auth (`curl -sL "https://drive.google.com/uc?export=download&id=<id>"`),
+which is what settled the ambiguous UI reports — four of them could not have been
+diagnosed from the prose alone. Bug 4's evidence is an mp4; the rest are JPEGs.
+
+Verified on the 720x1280 / density 320 emulator (360x640dp, 667 design units), which
+is the small phone this port is tuned against. **Three of the seven were already
+fixed** by earlier sessions and were confirmed on device rather than assumed.
+
+| # | Area | Verdict |
+|---|---|---|
+| 4 | Onboarding swipe | **fixed here** — the CTA swallowed the gesture |
+| 5 | Notification "No Thanks" | already fixed (2026-09-09); re-verified under 3-button nav |
+| 6 | Stats empty state | **fixed here** — text re-wrapped |
+| 7 | Add Chore step indicator | **fixed here** — "Schedule" wrapped |
+| 8 | "When to Do" box | already fixed (2026-09-09); re-verified on device |
+| 9 | Home progress bar | **fixed here** — bar clipped by the card |
+| 10 | Stats spacing/alignment | already fixed (2026-09-09 line-box pinning + the 35→37 column) |
+
+**Bug 4 — the Continue button, not the overlay.** My first hypothesis was that the
+bottom overlay (a full-width absolute `View` over the pager) was swallowing touches,
+and `pointerEvents="box-none"` looked like the fix. **The device disproved it**: with
+the attribute reverted, swipes at y=1000 still paged normally, because a plain RN View
+with no touch handlers already falls through. Recording that because it is the obvious
+wrong answer and it tests as if it worked.
+
+The real cause is narrower and is exactly what QA described as "especially around the
+Continue button". The CTA is `marginHorizontal: 25`, i.e. ~624 of the 720px width, so a
+horizontal swipe that starts on it **never leaves its own bounds** — `Pressable` sees an
+ordinary tap and fires `onPress`. And because the overlay is a SIBLING of the pager, not
+a child, the ScrollView can never steal the responder back. Measured with a dot-indicator
+page detector (the active dot is the elongated one; `x_start = 282.2 + 21.1 * index` px):
+a BACKWARD swipe on the button took page 3 → **4**, i.e. it moved you the wrong way.
+
+Fixed by giving the overlay a capture-phase `PanResponder`
+(`onMoveShouldSetPanResponderCapture` when `|dx| > 8 && |dx| > |dy|`) that claims any
+clearly-horizontal drag before the button sees it — which also cancels the pending
+press — and then pages with the CTA's own 300ms `Easing.inOut` transition via a new
+`goTo(target)` extracted from `next()`. `goTo` seeds `offset` from `scrollXValue.current`
+so a gesture-driven call cannot jump if the two drifted. Verified on device: forward on
+the button 3→4, below the button 4→5, backward on the button 5→4, a vertical drag
+changes nothing, and three consecutive taps on Continue still advance 0→1→2→3.
+
+Note the overlay must NOT be `pointerEvents="box-none"` now — that would stop it
+becoming the responder and disable the whole fix.
+
+**Bug 7 — the 55-unit frame belongs to the step CIRCLE, not the label.** iOS's label row
+is bare `Text` values distributed by `Spacer`s (`AddChoreView.swift:745-753`); the 55 is
+on `stepCircle` (:793). The port had copied `width: s(55)` + `textAlign: 'center'` onto
+`stepLabel`, and "Schedule" measures **54.08** units at 13pt semibold from the font's
+advance table — **0.9 units of headroom**. Android renders SF Pro Rounded marginally
+wider than the table predicts, so it wrapped to "Schedu / le". Dropped the width; the
+spacers distribute the row as on iOS.
+
+**Bug 6 — same class, 4.6% of headroom.** iOS pins the Stats empty-state subtitle to
+`.frame(width: 238)`; its longest authored line ("streaks, achievements, and cleaning")
+measures **227.01** units at 15pt regular. On the QA device that overflowed and the three
+authored `\n` lines re-wrapped into a ragged five. Replaced the fixed width with
+`maxWidth: s(345)` so the text sizes to content and the authored breaks always hold.
+Verified by temporarily forcing the empty branch — three clean centred lines.
+
+These two plus the 2026-09-09 "Skipped" column (35 units for a 34.48-unit label) are now
+**three instances of one pattern**: an iOS fixed frame that its own renderer just fits,
+with under ~5% of slack, which Android consumes.
+
+**Bug 7, follow-up — labels now centre under their numbers.** Dropping the width fixed the
+wrap but left iOS's own layout, where the labels are justified edge-to-edge: "Zone" sat
+flush left, ~25px left of circle 1's centre. Each label now sits in the SAME 55-unit
+column as its circle, with the same `spacer` between columns, so both rows share one pitch.
+The Text inside is absolutely positioned and bled `-s(12.5)` past each edge, giving it an
+80-unit measuring box inside the 55-unit column — that is what keeps "Schedule" on one line
+while the column stays 55 wide; the slot carries `height: sf(15.51)` because the Text is
+absolute. Measured on device, label ink centre vs circle centre: Zone +0.26, Chore +0.52,
+Schedule +0.52, More +0.00 design units (4-step), and +0.52/+0.52/+0.00 for the 3-step
+zone-locked variant — the residual is just each word's glyph bearing. Deliberate deviation
+from `AddChoreView.swift:745-753`, at the user's request.
+
+**Bug 9 — the progress bar was clipped by the card's bottom edge.** `progressContent` was
+absolutely pinned at `top: s(12) + s(17)` per iOS's `.padding(.top, 17)`. The content
+block measures ~126.7 units in a 150-unit card, so a fixed 17 leaves only ~5 units under
+the bar; measured on the QA device's screenshot that slack was ~1.7 units and the bar's
+bottom was visibly cut by the card boundary. The card itself is correct — `bannerImg.svg`
+is a 345x150 rect at (4,2) in a 353x158 canvas, and the rendered card measures 149 units.
+Centred the block in the card instead (`top: s(12)`, `height: s(150)`,
+`justifyContent: 'center'`), which is structurally what iOS's ZStack does; only the
+17-unit bias is dropped. Measured before/after on device: clearance under the bar
+**3.1 → 9.9 design units**, against 10.7 above.
+
+Verification: `npm run typecheck` passes. Bugs 4, 6, 7, 9 and the already-fixed 5, 8, 10
+were each confirmed on the running emulator over Fast Refresh, with the font-advance and
+clearance figures computed rather than eyeballed. Bugs 5 and 4 were exercised under
+**3-button navigation** (`adb shell cmd overlay enable com.android.internal.systemui.navbar.threebutton`)
+to match the QA device; the emulator was returned to gestural nav afterwards.
+
+Screens behind the gate chain (notification permission, onboarding, Stats' empty branch)
+were reached with temporary `return <View/>` bypasses in `App.tsx` / `StatsView.tsx`.
+**All are reverted** — `git diff App.tsx` is empty and a `BYPASS` grep over `App.tsx`
+and `src/` is clean.
+
+Don't regress: the onboarding overlay owns a capture-phase swipe responder — do not add
+`pointerEvents="box-none"` to it, and do not "simplify" `goTo` back into `next`. An iOS
+`.frame(width:)` around a `Text` is a porting HAZARD, not a token to copy: check the
+label's advance width first and drop the frame when the margin is under ~5%. The Home
+progress card's content is centred in the card on purpose; restoring the bare `top: 17`
+puts the bar back on the boundary.

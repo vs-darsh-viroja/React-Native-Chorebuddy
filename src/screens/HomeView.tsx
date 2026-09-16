@@ -213,7 +213,17 @@ const styles = StyleSheet.create({
   progressWrap: { height: s(162), marginTop: s(12) },
   progressBanner: { position: 'absolute', left: s(-4), top: s(10) },
   heartBunny: { position: 'absolute', right: s(8), bottom: s(-10), width: s(102.7), height: s(160) },
-  progressContent: { position: 'absolute', left: s(20), top: s(12) + s(17), right: 0, gap: s(12) },
+  /**
+   * The content block is CENTERED in the card's 150 units rather than pinned at
+   * iOS's bare `.padding(.top, 17)` — a deliberate, QA-driven deviation.
+   * The block measures ~126.7 units, so a fixed 17 top leaves only ~5 units under
+   * the progress bar, and on devices whose SF Pro Rounded line boxes run a couple
+   * of units taller than this emulator's that slack is gone and the bar is clipped
+   * by the card's bottom edge (QA bug 9). Centring splits the ~23 units of spare
+   * room evenly (~11.6 top and bottom), so the bar can never reach the boundary.
+   * iOS's own ZStack centres this VStack too; only the 17-unit bias is dropped.
+   */
+  progressContent: { position: 'absolute', left: s(20), top: s(12), height: s(150), right: 0, justifyContent: 'center', gap: s(12) },
   progressHead: { flexDirection: 'row', alignItems: 'center', gap: s(10) },
   calendarBadge: { width: s(36), height: s(36), borderRadius: s(11.25), backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   progressTitleBlock: { gap: s(4) },

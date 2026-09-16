@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, Easing, PanResponder, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { colors, font, isSmallPhone, s } from '@/theme';
+import { colors, font, isSmallPhone, s, sf } from '@/theme';
 import { WelcomeScreen } from './pages/WelcomeScreen';
 import { OnboardingProgressView } from './pages/OnboardingProgressView';
 import { OnboardingZoneView } from './pages/OnboardingZoneView';
@@ -198,17 +198,51 @@ export function OnboardingView({ onDone }: { onDone(): void }) {
 
   useEffect(() => () => { if (settleFallback.current) clearTimeout(settleFallback.current); }, []);
 
-  const next = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (index >= TOTAL - 1) return onDone();
-    const target = index + 1;
+  /** Animate the pager to `target` using the CTA's own 300ms transition. */
+  const goTo = (target: number) => {
+    if (target < 0 || target > TOTAL - 1 || target === index) return;
     selectPage(target);
     // The frame-driven scroll below emits onScroll events that initially still
     // round to the OLD page; suppress scroll-derived selection until it lands
     // so the press-time index (and its 400/600ms title choreography) survives.
     driving.current = true;
+    // Start from where the pager actually is, so a gesture-driven call cannot
+    // jump if `offset` drifted from the live scroll position.
+    offset.setValue(scrollXValue.current);
     Animated.timing(offset, { toValue: width * target, duration: 300, easing: Easing.inOut(Easing.ease), useNativeDriver: false }).start(() => { driving.current = false; settlePage(target); });
   };
+
+  const next = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (index >= TOTAL - 1) return onDone();
+    goTo(index + 1);
+  };
+
+  /**
+   * The bottom overlay is a SIBLING of the pager, not a child, so the ScrollView
+   * can never steal the responder back from anything in it. The Continue button
+   * spans almost the full width, so a horizontal swipe that starts on it never
+   * leaves its bounds — `Pressable` therefore saw an ordinary tap and fired
+   * `onPress`, meaning a swipe over the CTA could not page at all, and a BACKWARD
+   * swipe there actually advanced you forward (QA bug 4).
+   *
+   * This capture-phase responder claims any clearly-horizontal drag in the
+   * overlay before the button sees it (which also cancels the pending press), and
+   * then pages with the CTA's own animation. Vertical and stationary touches are
+   * left alone, so tapping Continue still works exactly as before.
+   */
+  const gesture = useRef({ index, goTo });
+  gesture.current = { index, goTo };
+  const swipe = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_event, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderRelease: (_event, g) => {
+        const { index: at, goTo: run } = gesture.current;
+        if (g.dx <= -SWIPE_THRESHOLD) run(at + 1);
+        else if (g.dx >= SWIPE_THRESHOLD) run(at - 1);
+      },
+    }),
+  ).current;
 
   const reveal = (value: Animated.Value) => ({
     opacity: value,
@@ -257,13 +291,21 @@ export function OnboardingView({ onDone }: { onDone(): void }) {
         ))}
       </Animated.ScrollView>
 
-      {/* iOS overlays this bottom-anchored stack on top of the pager. */}
-      <View style={[styles.overlay, { paddingBottom: Math.max(s(isSmallPhone ? 21 : 37), insets.bottom + s(10)) }]}>
-        <Animated.View style={[styles.copy, { opacity: copyFade }]}>
+      {/*
+        iOS overlays this bottom-anchored stack on top of the pager.
+
+        It must NOT be `pointerEvents="box-none"`: the swipe handler above needs
+        this view to be able to become the responder. Measured on device, a plain
+        View here already lets touches fall through to the pager, so `box-none`
+        was never what made the lower half swipe — the CTA was (see `swipe`).
+        The copy and dots take `none` because they are pure decoration.
+      */}
+      <View {...swipe.panHandlers} style={[styles.overlay, { paddingBottom: Math.max(s(isSmallPhone ? 21 : 37), insets.bottom + s(10)) }]}>
+        <Animated.View pointerEvents="none" style={[styles.copy, { opacity: copyFade }]}>
           <Animated.Text style={[styles.title, reveal(titleIn)]}>{COPY[settled].title}</Animated.Text>
           <Animated.Text style={[styles.subtitle, reveal(subtitleIn)]}>{COPY[settled].subtitle}</Animated.Text>
         </Animated.View>
-        <View style={styles.dots}>
+        <View pointerEvents="none" style={styles.dots}>
           {COPY.map((_, page) => <View key={page} style={[styles.dot, index === page && styles.dotActive]} />)}
         </View>
         <Pressable onPress={next} style={styles.button}>
@@ -276,6 +318,8 @@ export function OnboardingView({ onDone }: { onDone(): void }) {
 }
 
 const GAP = s(isSmallPhone ? 15.5 : 17);
+/** Design units of horizontal travel that commit an overlay swipe to a page change. */
+const SWIPE_THRESHOLD = s(40);
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
@@ -283,8 +327,17 @@ const styles = StyleSheet.create({
   pageContent: { flex: 1 },
   overlay: { position: 'absolute', left: 0, right: 0, bottom: 0, gap: GAP },
   copy: { gap: s(10) },
-  title: { ...font('bold', 26), color: colors.text, textAlign: 'center' },
-  subtitle: { ...font('regular', 17), color: 'rgba(31,31,31,0.5)', textAlign: 'center' },
+  /**
+   * Line boxes pinned to SF Pro Rounded's real metrics (fontSize x 1.193) with
+   * `includeFontPadding: false` — the standing Android rule, and here it is not
+   * cosmetic: this overlay is anchored to the WINDOW bottom while every page's
+   * art is anchored to the top, so any height Android invents for these two
+   * Texts is height taken away from the art above. With the default font padding
+   * the two-line title + two-line subtitle rendered ~10 design units taller than
+   * SwiftUI's, pushing the whole stack up into the artwork.
+   */
+  title: { ...font('bold', 26), lineHeight: sf(31.02), includeFontPadding: false, color: colors.text, textAlign: 'center' },
+  subtitle: { ...font('regular', 17), lineHeight: sf(20.28), includeFontPadding: false, color: 'rgba(31,31,31,0.5)', textAlign: 'center' },
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: s(6) },
   dot: { width: s(5), height: s(5), borderRadius: s(2.5), backgroundColor: `${colors.purple}33` },
   dotActive: { width: s(15), height: s(5), borderRadius: s(100), backgroundColor: colors.purple },

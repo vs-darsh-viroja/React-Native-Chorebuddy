@@ -7,7 +7,7 @@ import { Images } from '@/constants/assets';
 import { CheckmarkGlyph } from '@/components/glyphs';
 import { CircleButton, useFloat } from '@/components/motion';
 import { useChores } from '@/services/ChoreContext';
-import { colors, font, s } from '@/theme';
+import { colors, font, s, sf } from '@/theme';
 import type { RootStackParamList } from '@/navigation/types';
 import { AnimatedAppImage, AppImage } from '@/components/AppImage';
 
@@ -41,6 +41,15 @@ export function OverviewView({ navigation, route }: NativeStackScreenProps<RootS
 
   const zone = route.params.zone ?? store.chores.find(chore => chore.id === route.params.choreId)?.zoneName ?? '';
   const segmentWidth = (width - s(30) - s(10)) / 3;
+  /**
+   * The pager lives INSIDE the list card, which is inset `s(15)` either side,
+   * so a page is the card's inner width — not the window's. `pagingEnabled`
+   * snaps to multiples of this, but `scrollTo` and the momentum-end index were
+   * both using the full `width`, so tapping a segment scrolled `s(30)` (~58px
+   * here) past the page boundary and the next segment's rows showed through at
+   * the card's right edge — the stray red crosses on the empty Skipped page.
+   */
+  const pageWidth = width - s(30);
 
   const selectSegment = (index: number) => {
     if (index === segment) return;
@@ -48,7 +57,7 @@ export function OverviewView({ navigation, route }: NativeStackScreenProps<RootS
     setSegment(index);
     const stiffness = (2 * Math.PI / 0.35) ** 2;
     Animated.spring(thumb, { toValue: index, stiffness, damping: 2 * 0.85 * Math.sqrt(stiffness), mass: 1, useNativeDriver: true }).start();
-    pager.current?.scrollTo({ x: index * width, animated: true });
+    pager.current?.scrollTo({ x: index * pageWidth, animated: true });
   };
 
   const confirmDelete = () => {
@@ -104,10 +113,10 @@ export function OverviewView({ navigation, route }: NativeStackScreenProps<RootS
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={event => selectSegment(Math.round(event.nativeEvent.contentOffset.x / width))}
+          onMomentumScrollEnd={event => selectSegment(Math.round(event.nativeEvent.contentOffset.x / pageWidth))}
         >
           {SEGMENTS.map((item, index) => (
-            <ScrollView key={item.key} showsVerticalScrollIndicator={false} style={{ width: width - s(30) }} contentContainerStyle={styles.listContent}>
+            <ScrollView key={item.key} showsVerticalScrollIndicator={false} style={{ width: pageWidth }} contentContainerStyle={styles.listContent}>
               {rows[index].length === 0 ? (
                 <Text style={styles.emptyText}>Nothing here yet.</Text>
               ) : rows[index].map((date, rowIndex) => (
@@ -137,27 +146,27 @@ export function OverviewView({ navigation, route }: NativeStackScreenProps<RootS
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   header: { paddingTop: s(59), paddingHorizontal: s(15), height: s(99), alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { ...font('semibold', 24), color: colors.text },
+  headerTitle: { ...font('semibold', 24), lineHeight: sf(28.64), includeFontPadding: false, color: colors.text },
   headerButtons: { position: 'absolute', top: s(59), left: s(15), right: s(15), flexDirection: 'row', justifyContent: 'space-between' },
   headerIcon: { width: s(20), height: s(20) },
   mascot: { alignSelf: 'center', marginTop: s(22), height: s(164) },
   nameBlock: { paddingHorizontal: s(15), marginTop: s(20), gap: s(4) },
-  name: { ...font('semibold', 30), color: colors.text },
+  name: { ...font('semibold', 30), lineHeight: sf(35.8), includeFontPadding: false, color: colors.text },
   zoneRow: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
   zoneDot: { width: s(5), height: s(5), borderRadius: s(2.5), backgroundColor: `${colors.text}80` },
-  zoneName: { ...font('regular', 14), color: `${colors.text}80` },
+  zoneName: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}80` },
   segment: { marginHorizontal: s(15), marginTop: s(20), padding: s(5), borderRadius: s(15), borderWidth: 1, borderColor: `${colors.text}33`, flexDirection: 'row' },
   thumb: { position: 'absolute', left: s(5), top: s(5), height: s(40), borderRadius: s(12), borderWidth: 1, borderColor: '#0B254533' },
   segmentButton: { flex: 1, height: s(40), alignItems: 'center', justifyContent: 'center' },
-  segmentLabel: { ...font('medium', 14) },
-  segmentLabelOn: { ...font('semibold', 14), color: colors.white },
+  segmentLabel: { ...font('medium', 14), lineHeight: sf(16.71), includeFontPadding: false },
+  segmentLabelOn: { ...font('semibold', 14), lineHeight: sf(16.71), includeFontPadding: false, color: colors.white },
   listCard: { flex: 1, marginHorizontal: s(15), marginTop: s(20), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, overflow: 'hidden', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   listContent: { padding: s(15) },
-  emptyText: { ...font('regular', 14), color: `${colors.text}66`, textAlign: 'center', paddingVertical: s(24) },
+  emptyText: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}66`, textAlign: 'center', paddingVertical: s(24) },
   dateRow: { height: s(26), flexDirection: 'row', alignItems: 'center', gap: s(10) },
   divider: { height: 1, backgroundColor: `${colors.text}14`, marginLeft: s(34), marginVertical: s(12) },
   mark: { width: s(24), height: s(24), borderRadius: s(12), alignItems: 'center', justifyContent: 'center' },
   bar: { width: s(8), height: s(2), borderRadius: s(1) },
   cross: { width: s(8), height: s(8), alignItems: 'center', justifyContent: 'center' },
-  dateText: { ...font('regular', 14), color: colors.text },
+  dateText: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: colors.text },
 });

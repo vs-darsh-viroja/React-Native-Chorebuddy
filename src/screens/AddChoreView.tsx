@@ -18,7 +18,7 @@ import { useChores } from '@/services/ChoreContext';
 import { useHousehold } from '@/services/HouseholdContext';
 import { replaceChorePhotos } from '@/services/ChorePhotos';
 import { usePurchases } from '@/services/PurchaseManager';
-import { colors, font, s } from '@/theme';
+import { colors, font, s, sf } from '@/theme';
 import type { RootStackParamList } from '@/navigation/types';
 import { AnimatedAppImage, AppImage } from '@/components/AppImage';
 import { Spinner } from '@/components/Spinner';
@@ -289,7 +289,9 @@ export function AddChoreView({ navigation, route }: NativeStackScreenProps<RootS
           <View style={styles.stepLabels}>
             {steps.map((item, position) => (
               <React.Fragment key={item.label}>
-                <Text style={[styles.stepLabel, step >= item.index ? styles.stepLabelOn : null]}>{item.label}</Text>
+                <View style={styles.stepLabelSlot}>
+                  <Text numberOfLines={1} style={[styles.stepLabel, step >= item.index ? styles.stepLabelOn : null]}>{item.label}</Text>
+                </View>
                 {position < steps.length - 1 && <View style={styles.spacer} />}
               </React.Fragment>
             ))}
@@ -834,11 +836,11 @@ const styles = StyleSheet.create({
   headerWrap: { paddingHorizontal: s(15), paddingTop: s(59) },
   // iOS header height is its 40pt circle buttons; see ChoreDetailView's note.
   header: { height: s(40), alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { ...font('semibold', 22), color: colors.text },
+  headerTitle: { ...font('semibold', 22), lineHeight: sf(26.25), includeFontPadding: false, color: colors.text },
   headerButtons: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backCircle: { width: s(40), height: s(40), borderRadius: s(20), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(5), color: 'rgba(0,0,0,0.1)' }] },
   backIcon: { width: s(15), height: s(15) },
-  cancel: { ...font('semibold', 14), color: colors.purple },
+  cancel: { ...font('semibold', 14), lineHeight: sf(16.71), includeFontPadding: false, color: colors.purple },
   stepper: { marginTop: s(20), gap: s(4) },
   stepRow: { height: s(20), flexDirection: 'row', alignItems: 'center' },
   connector: { position: 'absolute', left: s(21.5), right: s(21.5), height: s(3), borderRadius: s(1.5) },
@@ -846,15 +848,34 @@ const styles = StyleSheet.create({
   stepCircle: { position: 'absolute', width: s(20), height: s(20) },
   stepNumber: { ...font('semibold', 13), lineHeight: s(20), includeFontPadding: false, textAlign: 'center', color: `${colors.purple}80` },
   stepLabels: { flexDirection: 'row', alignItems: 'center' },
-  stepLabel: { width: s(55), textAlign: 'center', ...font('semibold', 13), color: `${colors.purple}80` },
+  /**
+   * Each label sits in the SAME 55-unit column the circle above it uses, with the
+   * same `spacer` between columns, so the two rows share one pitch and every label
+   * centres exactly under its number. iOS instead lays the labels out as bare
+   * `Text` distributed by `Spacer`s (AddChoreView.swift:745-753), which leaves
+   * "Zone" flush left and ~25px off its circle — a deliberate deviation, at the
+   * user's request.
+   *
+   * The Text is absolutely positioned and bled 12.5 units past each edge, giving
+   * it an 80-unit measuring box inside the 55-unit column. That is the whole point:
+   * "Schedule" measures 54.08 units at 13pt semibold, so a bare 55-wide column
+   * leaves 0.9 units of headroom and Android's marginally wider rendering wrapped
+   * it to "Schedu / le" (QA bug 7). Overflowing the column keeps the labels centred
+   * AND unwrappable; the boxes are transparent, so the 25-unit overlap with a
+   * neighbour is invisible. `numberOfLines` is the backstop.
+   *
+   * Because the Text is absolute, the slot carries the line box as its height.
+   */
+  stepLabelSlot: { width: s(55), height: sf(15.51) },
+  stepLabel: { position: 'absolute', left: -s(12.5), right: -s(12.5), textAlign: 'center', ...font('semibold', 13), lineHeight: sf(15.51), includeFontPadding: false, color: `${colors.purple}80` },
   stepLabelOn: { color: colors.purple },
   spacer: { flex: 1 },
 
   pager: { flex: 1, flexDirection: 'row' },
   page: { paddingTop: s(35), paddingHorizontal: s(15), gap: s(20) },
   titleBlock: { gap: s(5) },
-  pageTitle: { ...font('semibold', 22), color: colors.text },
-  pageSubtitle: { ...font('regular', 14), color: `${colors.text}80` },
+  pageTitle: { ...font('semibold', 22), lineHeight: sf(26.25), includeFontPadding: false, color: colors.text },
+  pageSubtitle: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}80` },
   pageScroll: { paddingBottom: s(140), gap: s(15) },
 
   search: { height: s(42), borderRadius: s(21), borderWidth: 1, borderColor: `${colors.text}33`, flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(10), gap: s(10) },
@@ -864,16 +885,16 @@ const styles = StyleSheet.create({
   searchClearText: { fontSize: s(8), color: `${colors.text}80`, fontWeight: '600' },
   searchEmpty: { alignItems: 'center', paddingTop: s(80), gap: s(10) },
   searchEmptyIcon: { opacity: 0.25, marginBottom: s(6) },
-  searchEmptyTitle: { ...font('semibold', 16), color: colors.text },
-  searchEmptyBody: { ...font('regular', 14), color: `${colors.text}80` },
+  searchEmptyTitle: { ...font('semibold', 16), lineHeight: sf(19.09), includeFontPadding: false, color: colors.text },
+  searchEmptyBody: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}80` },
 
   zoneSection: { gap: s(8) },
-  sectionTitle: { ...font('regular', 14), color: `${colors.text}80` },
+  sectionTitle: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}80` },
   zoneRows: { gap: s(8) },
   zoneRow: { flexDirection: 'row', alignItems: 'center', gap: s(15), paddingHorizontal: s(15), paddingVertical: s(16), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   zoneTile: { width: s(37), height: s(37), borderRadius: s(12), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   zoneTileIcon: { width: s(23.125), height: s(23.125), tintColor: colors.white },
-  zoneName: { ...font('regular', 15), color: colors.text, flexShrink: 1 },
+  zoneName: { ...font('regular', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text, flexShrink: 1 },
   checkbox: { width: s(22), height: s(22), alignItems: 'center', justifyContent: 'center' },
   checkboxArt: { position: 'absolute', left: 0, top: 0, width: s(22), height: s(22) },
   checkboxBorder: { borderRadius: s(4), borderWidth: 1.5, borderColor: `${colors.text}33` },
@@ -886,27 +907,27 @@ const styles = StyleSheet.create({
   optionIcon: { width: s(50), height: s(50), borderRadius: s(14.286), backgroundColor: `${colors.purple}14`, alignItems: 'center', justifyContent: 'center' },
   optionIconImage: { width: s(28.571), height: s(28.571) },
   optionCopy: { gap: s(4) },
-  optionTitle: { ...font('medium', 15), color: colors.text },
-  optionSubtitle: { ...font('regular', 14), color: `${colors.text}80` },
+  optionTitle: { ...font('medium', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text },
+  optionSubtitle: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}80` },
 
   presetScroll: { paddingTop: s(4), paddingBottom: s(140), gap: s(8) },
   presetCard: { paddingHorizontal: s(15), paddingVertical: s(16), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, gap: s(14), boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   presetTop: { flexDirection: 'row', alignItems: 'center' },
   presetCopy: { flex: 1, gap: s(3) },
-  presetName: { ...font('regular', 15), color: colors.text },
-  presetNameOn: { ...font('medium', 15), color: colors.text },
-  presetFrequency: { ...font('regular', 13), color: `${colors.text}80` },
+  presetName: { ...font('regular', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text },
+  presetNameOn: { ...font('medium', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text },
+  presetFrequency: { ...font('regular', 13), lineHeight: sf(15.51), includeFontPadding: false, color: `${colors.text}80` },
   presetDetail: { padding: s(12), borderRadius: s(16), borderWidth: 1, borderColor: `${colors.text}1A`, gap: s(8) },
   presetDivider: { height: 1, backgroundColor: `${colors.text}1A` },
   presetRow: { flexDirection: 'row', alignItems: 'center' },
-  presetRowTitle: { ...font('regular', 14), color: `${colors.text}80` },
+  presetRowTitle: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}80` },
   presetPill: { borderRadius: s(12), backgroundColor: `${colors.purple}1F`, paddingHorizontal: s(12), paddingVertical: s(5) },
-  presetPillText: { ...font('medium', 12), color: colors.purple },
+  presetPillText: { ...font('medium', 12), lineHeight: sf(14.32), includeFontPadding: false, color: colors.purple },
 
   card: { padding: s(15), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, gap: s(20), boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   cardInvalid: { borderWidth: 1.5, borderColor: CORAL },
-  cardLabel: { ...font('medium', 14), color: `${colors.text}CC` },
-  cardHint: { ...font('regular', 12), color: `${colors.text}80` },
+  cardLabel: { ...font('medium', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}CC` },
+  cardHint: { ...font('regular', 12), lineHeight: sf(14.32), includeFontPadding: false, color: `${colors.text}80` },
   fieldBox: { height: s(48), borderRadius: s(16), backgroundColor: colors.background, borderWidth: 1, borderColor: `${colors.text}1A`, paddingHorizontal: s(14), justifyContent: 'center' },
   fieldInput: { ...font('regular', 14), color: colors.text, padding: 0 },
 
@@ -918,27 +939,27 @@ const styles = StyleSheet.create({
   freqIcon: { width: s(35), height: s(35), borderRadius: s(10), backgroundColor: `${colors.purple}14`, alignItems: 'center', justifyContent: 'center' },
   freqIconImage: { width: s(19), height: s(19), tintColor: colors.purple },
   freqCopy: { flex: 1, gap: s(4) },
-  freqTitle: { ...font('regular', 14), color: colors.text },
-  freqSubtitle: { ...font('regular', 12), color: `${colors.text}80` },
+  freqTitle: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: colors.text },
+  freqSubtitle: { ...font('regular', 12), lineHeight: sf(14.32), includeFontPadding: false, color: `${colors.text}80` },
 
   occursBlock: { gap: s(6) },
   fieldRow: { flexDirection: 'row', gap: s(15) },
   scheduleField: { flex: 1, gap: s(6) },
   scheduleButton: { flexDirection: 'row', alignItems: 'center', gap: s(10), padding: s(14), borderRadius: s(12), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A` },
-  scheduleValue: { ...font('regular', 14), color: colors.text, flexShrink: 1 },
+  scheduleValue: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: colors.text, flexShrink: 1 },
   daysBlock: { gap: s(10) },
   chipsCard: { flexDirection: 'row', padding: s(10), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A` },
   chipColumn: { flex: 1, alignItems: 'center', gap: s(6) },
-  chipLabel: { ...font('regular', 14), color: `${colors.text}80` },
+  chipLabel: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}80` },
   chipCircle: { width: s(24), height: s(24), borderRadius: s(12), borderWidth: 1, borderColor: `${colors.text}33`, alignItems: 'center', justifyContent: 'center' },
   chipCircleOn: { backgroundColor: colors.purple, borderColor: 'transparent' },
-  daysCaption: { ...font('medium', 12), color: colors.purple, textAlign: 'center' },
+  daysCaption: { ...font('medium', 12), lineHeight: sf(14.32), includeFontPadding: false, color: colors.purple, textAlign: 'center' },
   customRow: { flexDirection: 'row', gap: s(10) },
   customWheel: { flex: 1, borderRadius: s(12), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, overflow: 'hidden' },
 
   assignHeader: { flexDirection: 'row', alignItems: 'center' },
   addMemberPill: { flexDirection: 'row', alignItems: 'center', height: s(26), borderRadius: s(13), backgroundColor: `${colors.purple}1F`, overflow: 'hidden' },
-  addMemberLabel: { ...font('medium', 12), color: colors.purple, paddingHorizontal: s(10) },
+  addMemberLabel: { ...font('medium', 12), lineHeight: sf(14.32), includeFontPadding: false, color: colors.purple, paddingHorizontal: s(10) },
   addMemberDivider: { width: 1, height: s(26), backgroundColor: `${colors.text}1A` },
   addMemberChevron: { width: s(25), height: s(26), backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   assignedRow: { gap: s(20), paddingTop: s(5) },
@@ -947,12 +968,12 @@ const styles = StyleSheet.create({
   assignedRemoveSlot: { position: 'absolute', top: -s(4), right: -s(4), zIndex: 2 },
   assignedRemove: { width: s(18), height: s(18), borderRadius: s(9), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center' },
   assignedRemoveText: { fontSize: s(8), color: `${colors.text}99`, fontWeight: '600' },
-  assignedName: { ...font('regular', 12), color: colors.text, maxWidth: s(60), textAlign: 'center' },
-  assignError: { ...font('regular', 12), color: CORAL },
+  assignedName: { ...font('regular', 12), lineHeight: sf(14.32), includeFontPadding: false, color: colors.text, maxWidth: s(60), textAlign: 'center' },
+  assignError: { ...font('regular', 12), lineHeight: sf(14.32), includeFontPadding: false, color: CORAL },
 
   stateRow: { flexDirection: 'row', alignItems: 'center' },
   stateBlock: { alignItems: 'flex-end', gap: s(4) },
-  stateLabel: { ...font('regular', 10), color: `${colors.text}80` },
+  stateLabel: { ...font('regular', 10), lineHeight: sf(11.93), includeFontPadding: false, color: `${colors.text}80` },
   stateTrack: { width: s(142), height: s(19), borderRadius: s(9.5), overflow: 'hidden', justifyContent: 'center' },
   stateFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: s(9.5) },
   stateTick: { position: 'absolute', width: 1, height: s(8), backgroundColor: colors.white },
@@ -976,7 +997,7 @@ const styles = StyleSheet.create({
   uploadIcon: { width: s(28), height: s(28), borderRadius: s(7), backgroundColor: `${colors.purple}1F`, alignItems: 'center', justifyContent: 'center' },
   uploadPlus: { width: s(20), height: s(20) },
   uploadLabel: { ...font('regular', 11), lineHeight: s(13.1), includeFontPadding: false, color: `${colors.text}80` },
-  viewAll: { ...font('medium', 12), color: colors.purple },
+  viewAll: { ...font('medium', 12), lineHeight: sf(14.32), includeFontPadding: false, color: colors.purple },
   thumbRow: { flexDirection: 'row', gap: s(10) },
   thumb: { width: s(90), height: s(90), borderRadius: s(12), overflow: 'hidden', borderWidth: 1, borderColor: `${colors.text}1A` },
   thumbImage: { width: '100%', height: '100%' },
@@ -987,14 +1008,14 @@ const styles = StyleSheet.create({
   bottomBar: { position: 'absolute', left: s(25), right: s(25), bottom: s(20) },
   continueCta: { height: s(52), borderRadius: s(26), backgroundColor: colors.purpleEdge, overflow: 'hidden', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(10), color: 'rgba(0,0,0,0.2)' }] },
   continueInner: { flex: 1, marginBottom: s(1.5), borderRadius: s(26), backgroundColor: colors.purple, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s(10) },
-  continueLabel: { ...font('semibold', 16), color: colors.white },
+  continueLabel: { ...font('semibold', 16), lineHeight: sf(19.09), includeFontPadding: false, color: colors.white },
   continueArrow: { width: s(16), height: s(16), tintColor: colors.white, transform: [{ rotate: '180deg' }] },
   saveCta: { height: s(52), borderRadius: s(26), backgroundColor: colors.purpleEdge, overflow: 'hidden', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(10), color: 'rgba(0,0,0,0.2)' }] },
   saveInner: { flex: 1, marginBottom: s(1.5), borderRadius: s(26), backgroundColor: colors.purple, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s(10) },
-  saveLabel: { ...font('semibold', 16), color: colors.white },
+  saveLabel: { ...font('semibold', 16), lineHeight: sf(19.09), includeFontPadding: false, color: colors.white },
 
   toastWrap: { position: 'absolute', left: s(20), right: s(20), bottom: s(100) },
   toast: { flexDirection: 'row', alignItems: 'center', gap: s(10), paddingHorizontal: s(16), paddingVertical: s(14), borderRadius: s(14), backgroundColor: CORAL, boxShadow: [{ offsetX: 0, offsetY: s(6), blurRadius: s(14), color: 'rgba(255,87,87,0.35)' }] },
-  toastMark: { ...font('bold', 17), color: colors.white, width: s(17), textAlign: 'center' },
-  toastText: { ...font('medium', 13), color: colors.white, flex: 1 },
+  toastMark: { ...font('bold', 17), lineHeight: sf(20.29), includeFontPadding: false, color: colors.white, width: s(17), textAlign: 'center' },
+  toastText: { ...font('medium', 13), lineHeight: sf(15.51), includeFontPadding: false, color: colors.white, flex: 1 },
 });

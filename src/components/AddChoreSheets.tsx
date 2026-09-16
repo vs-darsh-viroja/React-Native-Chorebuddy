@@ -13,7 +13,7 @@ import { TimeWheel } from '@/components/WheelPicker';
 import { useChores } from '@/services/ChoreContext';
 import { useHousehold, type HouseholdMember } from '@/services/HouseholdContext';
 import { predefinedZoneSections, zoneIcon, zonePalettes } from '@/models/zones';
-import { colors, font, s, screen } from '@/theme';
+import { colors, font, s, screen, sf } from '@/theme';
 import { AppImage } from '@/components/AppImage';
 
 const CORAL = '#FF5757';
@@ -492,12 +492,12 @@ const styles = StyleSheet.create({
   searchClear: { fontSize: s(13), color: `${colors.text}4D` },
   zoneList: { paddingHorizontal: s(15), paddingTop: s(18), paddingBottom: s(150), gap: s(20) },
   zoneSection: { gap: s(8) },
-  zoneSectionTitle: { ...font('regular', 14), color: `${colors.text}80` },
+  zoneSectionTitle: { ...font('regular', 14), lineHeight: sf(16.71), includeFontPadding: false, color: `${colors.text}80` },
   zoneRow: { flexDirection: 'row', alignItems: 'center', gap: s(15), paddingHorizontal: s(15), height: s(74), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, boxShadow: [{ offsetX: 0, offsetY: s(4), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   zoneRowOn: { borderWidth: 1.5, borderColor: colors.purple },
   zoneRowTile: { width: s(48), height: s(48), borderRadius: s(12), borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   zoneRowIcon: { width: s(30), height: s(30), tintColor: colors.white },
-  zoneRowName: { ...font('medium', 15), color: colors.text, flexShrink: 1 },
+  zoneRowName: { ...font('medium', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text, flexShrink: 1 },
 
   footer: { paddingHorizontal: s(25), paddingBottom: s(55) },
   footerTall: { paddingHorizontal: s(25), paddingTop: s(30), paddingBottom: s(55) },
@@ -507,15 +507,15 @@ const styles = StyleSheet.create({
   calendarCard: { marginHorizontal: s(15), marginTop: s(20), padding: s(15), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, gap: s(15), boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   monthTitleRow: { flexDirection: 'row', alignItems: 'center', gap: s(6) },
-  monthTitle: { ...font('medium', 16), color: colors.text },
+  monthTitle: { ...font('medium', 16), lineHeight: sf(19.09), includeFontPadding: false, color: colors.text },
   monthButtons: { flexDirection: 'row', alignItems: 'center', gap: s(20) },
   weekHeader: { flexDirection: 'row' },
-  weekday: { flex: 1, textAlign: 'center', ...font('medium', 12), color: `${colors.text}80` },
+  weekday: { flex: 1, textAlign: 'center', ...font('medium', 12), lineHeight: sf(14.32), includeFontPadding: false, color: `${colors.text}80` },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: s(8) },
   dayCell: { width: `${100 / 7}%`, alignItems: 'center' },
   dayBox: { width: s(38), height: s(38), borderRadius: s(10), alignItems: 'center', justifyContent: 'center' },
   daySelected: { backgroundColor: `${colors.purple}59` },
-  dayText: { ...font('regular', 15), color: colors.text },
+  dayText: { ...font('regular', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text },
 
   wheelCard: { marginHorizontal: s(15), marginTop: s(20), padding: s(15), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
 
@@ -523,7 +523,7 @@ const styles = StyleSheet.create({
   monthDayCell: { width: `${100 / 7}%`, alignItems: 'center' },
   monthDayBox: { width: s(38), height: s(38), borderRadius: s(12), borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center' },
   monthDayBoxOn: { backgroundColor: colors.purple, borderColor: 'transparent' },
-  monthDayText: { ...font('regular', 15), color: colors.text },
+  monthDayText: { ...font('regular', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text },
 
   fieldsCard: { flexDirection: 'row', gap: s(15), marginHorizontal: s(15), marginTop: s(20), padding: s(15), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   fieldColumn: { flex: 1, gap: s(6) },
@@ -556,22 +556,22 @@ const styles = StyleSheet.create({
   createPill: { flexDirection: 'row', alignItems: 'center', gap: s(8), height: s(36), paddingLeft: s(6), paddingRight: s(14), borderRadius: s(18), backgroundColor: `${colors.purple}1A`, borderWidth: 1, borderColor: `${colors.purple}26` },
   createPlus: { width: s(24), height: s(24), borderRadius: s(12), backgroundColor: colors.purple, alignItems: 'center', justifyContent: 'center' },
   createPlusIcon: { width: s(10), height: s(10), tintColor: colors.white },
-  createLabel: { ...font('medium', 14), color: colors.text },
+  createLabel: { ...font('medium', 14), lineHeight: sf(16.71), includeFontPadding: false, color: colors.text },
   assignList: { paddingHorizontal: s(15), paddingTop: s(14), paddingBottom: s(120), gap: s(10) },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: s(15), paddingHorizontal: s(15), height: s(69), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
-  memberName: { ...font('medium', 15), color: colors.text, flexShrink: 1 },
+  memberName: { ...font('medium', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text, flexShrink: 1 },
   youPill: { borderRadius: s(10), backgroundColor: `${colors.purple}1A`, paddingHorizontal: s(8), height: s(20), justifyContent: 'center' },
-  youPillText: { ...font('medium', 11), color: colors.purple },
+  youPillText: { ...font('medium', 11), lineHeight: sf(13.13), includeFontPadding: false, color: colors.purple },
   assignEmpty: { alignItems: 'center', paddingTop: s(20), gap: s(10) },
   assignEmptyArt: { width: s(129.4), height: s(160) },
-  assignEmptyTitle: { ...font('semibold', 18), color: colors.text },
-  assignEmptyBody: { ...font('regular', 15), color: `${colors.text}99`, textAlign: 'center' },
+  assignEmptyTitle: { ...font('semibold', 18), lineHeight: sf(21.48), includeFontPadding: false, color: colors.text },
+  assignEmptyBody: { ...font('regular', 15), lineHeight: sf(17.9), includeFontPadding: false, color: `${colors.text}99`, textAlign: 'center' },
   assignFooter: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   assignFade: { height: s(60) },
   assignCta: { backgroundColor: colors.background, paddingHorizontal: s(25), paddingTop: s(6), paddingBottom: s(30) },
 
   createHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: s(15), paddingTop: s(18) },
-  createTitle: { ...font('medium', 20), color: colors.text },
+  createTitle: { ...font('medium', 20), lineHeight: sf(23.87), includeFontPadding: false, color: colors.text },
   backCircle: { width: s(28), height: s(28), borderRadius: s(14), borderWidth: 1, borderColor: `${colors.text}33`, alignItems: 'center', justifyContent: 'center' },
   backIcon: { width: s(14), height: s(14) },
   closeX: { fontSize: s(11), color: `${colors.text}CC`, fontWeight: '600' },

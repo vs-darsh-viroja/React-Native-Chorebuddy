@@ -10,7 +10,7 @@ import { StatsFilterSheet, emptyFilter, filterIsActive, type StatsFilter } from 
 import { GradientText } from '@/screens/onboarding/pages/parts';
 import { useChores, type ChoreEvent, type StatsRange } from '@/services/ChoreContext';
 import { usePurchases } from '@/services/PurchaseManager';
-import { colors, font, s } from '@/theme';
+import { colors, font, s, sf } from '@/theme';
 import type { RootStackParamList } from '@/navigation/types';
 import { AnimatedAppImage, AppImage } from '@/components/AppImage';
 
@@ -245,7 +245,8 @@ function OverviewStat({ value, label, color }: { value: number; label: string; c
   return (
     <View style={styles.overviewStat}>
       <Text style={[styles.overviewStatValue, { color }]}>{value}</Text>
-      <Text style={styles.overviewStatLabel}>{label}</Text>
+      {/* Never wrap: the column is fixed, so a wider label must clip, not stack. */}
+      <Text numberOfLines={1} style={styles.overviewStatLabel}>{label}</Text>
     </View>
   );
 }
@@ -270,7 +271,7 @@ function EmptyState() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   titleBar: { paddingTop: s(59), paddingHorizontal: s(15), flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { ...font('semibold', 24), color: colors.text },
+  title: { ...font('semibold', 24), lineHeight: sf(28.64), includeFontPadding: false, color: colors.text },
   titleActions: { flexDirection: 'row', gap: s(10) },
   titleIcon: { width: s(22), height: s(22) },
   scroll: { paddingHorizontal: s(15), paddingTop: s(20), paddingBottom: s(140) },
@@ -278,8 +279,8 @@ const styles = StyleSheet.create({
   fireBadge: { width: s(30), height: s(30), borderRadius: s(9.643), backgroundColor: `${ORANGE}1A`, alignItems: 'center', justifyContent: 'center' },
   fireIcon: { width: s(18), height: s(18) },
   streakLabelCopy: { gap: s(1) },
-  streakLabelTitle: { ...font('medium', 15), color: colors.text },
-  streakLabelSub: { ...font('regular', 10), color: `${colors.text}80` },
+  streakLabelTitle: { ...font('medium', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text },
+  streakLabelSub: { ...font('regular', 10), lineHeight: sf(11.93), includeFontPadding: false, color: `${colors.text}80` },
   streakCard: { marginTop: s(10), height: s(237), borderRadius: s(16), borderWidth: 1, borderColor: `${colors.text}1A`, paddingHorizontal: s(15), paddingTop: s(4), boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(15), color: 'rgba(0,0,0,0.1)' }] },
   streakTop: { height: s(125), flexDirection: 'row', alignItems: 'center' },
   mascot: { width: s(94), height: s(121), marginRight: s(26) },
@@ -291,10 +292,10 @@ const styles = StyleSheet.create({
    * nudged down by the descent difference between 42pt and 18pt.
    */
   daysRow: { flexDirection: 'row', alignItems: 'flex-end', gap: s(6) },
-  daysLabel: { ...font('medium', 18), color: colors.text, marginBottom: s(6) },
+  daysLabel: { ...font('medium', 18), lineHeight: sf(21.48), includeFontPadding: false, color: colors.text, marginBottom: s(6) },
   weekRow: { height: s(88), flexDirection: 'row' },
   dayColumn: { flex: 1, alignItems: 'center', paddingTop: s(4), gap: s(5) },
-  dayName: { ...font('regular', 12), color: `${colors.text}80` },
+  dayName: { ...font('regular', 12), lineHeight: sf(14.32), includeFontPadding: false, color: `${colors.text}80` },
   face: { width: s(45), height: s(45) },
   statusGlyph: { width: s(15), height: s(15), resizeMode: 'contain' },
   statusEmpty: { width: s(15), height: s(15), borderRadius: s(7.5), borderWidth: 1, borderColor: `${colors.text}33` },
@@ -303,14 +304,14 @@ const styles = StyleSheet.create({
   statBadge: { width: s(38), height: s(38), borderRadius: s(12.214), alignItems: 'center', justifyContent: 'center' },
   statIcon: { width: s(21), height: s(21) },
   statCopy: { gap: s(2) },
-  statValue: { ...font('bold', 20) },
-  statLabel: { ...font('regular', 12), color: `${colors.text}CC` },
-  overviewTitle: { marginTop: s(25), ...font('semibold', 16), color: colors.text },
+  statValue: { ...font('bold', 20), lineHeight: sf(23.87), includeFontPadding: false },
+  statLabel: { ...font('regular', 12), lineHeight: sf(14.32), includeFontPadding: false, color: `${colors.text}CC` },
+  overviewTitle: { marginTop: s(25), ...font('semibold', 16), lineHeight: sf(19.09), includeFontPadding: false, color: colors.text },
   legendRow: { marginTop: s(15), height: s(38), flexDirection: 'row', alignItems: 'center', gap: s(12) },
   legendPills: { flex: 1, flexDirection: 'row', gap: s(14) },
   legendPill: { flex: 1, height: s(38), borderRadius: s(8), alignItems: 'center', justifyContent: 'center', gap: s(2) },
-  legendCount: { ...font('bold', 10) },
-  legendLabel: { ...font('medium', 10) },
+  legendCount: { ...font('bold', 10), lineHeight: sf(11.93), includeFontPadding: false },
+  legendLabel: { ...font('medium', 10), lineHeight: sf(11.93), includeFontPadding: false },
   legendDivider: { width: 1, height: s(26), backgroundColor: `${colors.text}1A` },
   filterButton: { width: s(38), height: s(38), borderRadius: s(12), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, alignItems: 'center', justifyContent: 'center', boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   filterIcon: { width: s(20), height: s(20) },
@@ -318,19 +319,39 @@ const styles = StyleSheet.create({
   overviewList: { marginTop: s(15), gap: s(8) },
   overviewCard: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: s(15), paddingVertical: s(16), borderRadius: s(16), backgroundColor: colors.white, borderWidth: 1, borderColor: `${colors.text}1A`, boxShadow: [{ offsetX: 0, offsetY: s(2), blurRadius: s(7.5), color: 'rgba(0,0,0,0.1)' }] },
   overviewCopy: { flex: 1, gap: s(2) },
-  overviewName: { ...font('medium', 15), color: colors.text },
+  overviewName: { ...font('medium', 15), lineHeight: sf(17.9), includeFontPadding: false, color: colors.text },
   zoneRow: { flexDirection: 'row', alignItems: 'center', gap: s(4) },
   zoneDot: { width: s(4), height: s(4), borderRadius: s(2), backgroundColor: `${colors.text}80` },
-  zoneName: { ...font('regular', 12), color: `${colors.text}80` },
-  overviewStats: { flexDirection: 'row', gap: s(25) },
-  overviewStat: { width: s(35), alignItems: 'center', gap: s(5) },
-  overviewStatValue: { ...font('bold', 14) },
-  overviewStatLabel: { ...font('regular', 10), color: `${colors.text}CC` },
+  zoneName: { ...font('regular', 12), lineHeight: sf(14.32), includeFontPadding: false, color: `${colors.text}80` },
+  /**
+   * iOS is three 35-unit columns with 25-unit gaps (`StatsView.swift:449-451,
+   * 471`), a 155-unit block. "Skipped" measures 34.48 units at 10pt by the
+   * font's own advance table, so SwiftUI fits it with 0.5 to spare — but Android
+   * lays it out slightly wider and broke the word as "Skippe / d". Probed the
+   * real widths on device at 35/36/37/38: 35 ellipsizes to "Skipp...", 36 is the
+   * first that fits. 37 takes that with a unit of margin, and the gap drops to
+   * 22 so the three columns still total exactly iOS's 155 and the flexible name
+   * column beside them is untouched.
+   */
+  overviewStats: { flexDirection: 'row', gap: s(22) },
+  overviewStat: { width: s(37), alignItems: 'center', gap: s(5) },
+  overviewStatValue: { ...font('bold', 14), lineHeight: sf(16.71), includeFontPadding: false },
+  overviewStatLabel: { ...font('regular', 10), lineHeight: sf(11.93), includeFontPadding: false, color: `${colors.text}CC` },
   emptyRoot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyStack: { alignItems: 'center', transform: [{ translateY: s(-50) }] },
   emptyGlow: { position: 'absolute', alignSelf: 'center', top: s(100) },
   emptyImage: { width: s(345), height: s(345) },
   emptyCopy: { marginTop: s(-60), gap: s(10), alignItems: 'center' },
-  emptyTitle: { ...font('semibold', 18), color: colors.text },
-  emptySubtitle: { ...font('regular', 15), color: `${colors.text}99`, width: s(238), textAlign: 'center' },
+  emptyTitle: { ...font('semibold', 18), lineHeight: sf(21.48), includeFontPadding: false, color: colors.text },
+  /**
+   * iOS pins this to `.frame(width: 238)`, which its own rendering just fits —
+   * the longest authored line ("streaks, achievements, and cleaning") measures
+   * 227 units from the font's advance table, under 5% of headroom. Android lays
+   * SF Pro Rounded marginally wider, so on some devices that line overflowed 238
+   * and re-wrapped, breaking the three authored lines into a ragged five (QA bug
+   * 6). Sizing to content honours the `\n` breaks everywhere; `maxWidth` keeps it
+   * inside the screen on the narrowest phone. Deliberate deviation from the fixed
+   * iOS frame — the rendered result is the one iOS shows.
+   */
+  emptySubtitle: { ...font('regular', 15), lineHeight: sf(17.9), includeFontPadding: false, color: `${colors.text}99`, maxWidth: s(345), textAlign: 'center' },
 });

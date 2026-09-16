@@ -102,7 +102,21 @@ export function BottomSheet({ onClose, height = SHEET_HEIGHT, bunny = 'offset', 
   // (CTAs included) clear of the bar in one place, so individual footers keep
   // their plain iOS design padding — exactly how iOS measures from the safe area.
   const insets = useSafeAreaInsets();
-  const travel = height === 'auto' ? screen.height : height;
+  /**
+   * The card grows BY the inset rather than absorbing it.
+   *
+   * iOS sizes these sheets as a fraction of the screen (`height * 617/812`, or
+   * `* 0.78` for the calendar) and gets that whole box for content, because its
+   * home-indicator zone is drawable. Padding the inset out of the same box on
+   * Android left the content area `insets.bottom` SHORTER than iOS's — 25 design
+   * units on gesture nav, ~50 against a three-button bar — which is what pinned
+   * the calendar sheet's Done button hard against the month card with no gap.
+   * Adding the inset to the card's height restores iOS's exact content box; the
+   * extra strip simply extends behind the opaque navigation bar, where the card
+   * is flat background colour anyway. It can only ever make a sheet taller, so
+   * no existing sheet can be squeezed by this.
+   */
+  const travel = height === 'auto' ? screen.height : height + insets.bottom;
   return (
     <SheetContext.Provider value={{ close }}>
       <View style={StyleSheet.absoluteFill}>
@@ -114,7 +128,7 @@ export function BottomSheet({ onClose, height = SHEET_HEIGHT, bunny = 'offset', 
               <PeekBunny />
             </View>
           )}
-          <View style={[styles.card, height === 'auto' ? null : { height }, { paddingBottom: insets.bottom }]} {...pan.panHandlers}>
+          <View style={[styles.card, height === 'auto' ? null : { height: height + insets.bottom }, { paddingBottom: insets.bottom }]} {...pan.panHandlers}>
             <View style={styles.handle} />
             {children}
           </View>
